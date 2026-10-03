@@ -29,11 +29,11 @@ public partial class UpdateService(Config config, Func<bool, string, Task> updat
             _ = UpdateFunc(false, args.GetException().Message);
         };
 
-        await UpdateFunc(false, string.Format(ResUI.MsgStartUpdating, ECoreType.v2rayN));
+        await UpdateFunc(false, string.Format(ResUI.MsgStartUpdating, ECoreType.v2rayN.ToDisplayName()));
         var result = await CheckUpdateAsync(downloadHandle, ECoreType.v2rayN, preRelease, blProxy);
         if (result.Success)
         {
-            await UpdateFunc(false, string.Format(ResUI.MsgParsingSuccessfully, ECoreType.v2rayN));
+            await UpdateFunc(false, string.Format(ResUI.MsgParsingSuccessfully, ECoreType.v2rayN.ToDisplayName()));
             await UpdateFunc(false, result.Msg);
 
             url = result.Url!;
@@ -125,7 +125,7 @@ public partial class UpdateService(Config config, Func<bool, string, Task> updat
             var result = await CheckHasUpdateOnly(type, preRelease, blProxy, cancellationToken);
             if (result.Success && result.Version != null)
             {
-                var msg = string.Format(ResUI.MsgCheckUpdateHasNewVersion, type, result.Version);
+                var msg = string.Format(ResUI.MsgCheckUpdateHasNewVersion, type.ToDisplayName(), result.Version);
                 msgs.Add(msg);
                 AppManager.Instance.SetLastCheckUpdateResult(type, msg);
             }
@@ -292,7 +292,7 @@ public partial class UpdateService(Config config, Func<bool, string, Task> updat
                 case ECoreType.v2rayN:
                     {
                         curVersion = new SemanticVersion(Utils.GetVersionInfo());
-                        message = string.Format(ResUI.IsLatestN, type, curVersion.ToStandardVersionString("v"));
+                        message = string.Format(ResUI.IsLatestN, type.ToDisplayName(), curVersion.ToStandardVersionString("v"));
                         url = string.Format(coreUrl, version);
                         break;
                     }

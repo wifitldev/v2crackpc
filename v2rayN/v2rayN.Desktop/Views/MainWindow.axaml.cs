@@ -486,7 +486,7 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
             var item = new MenuItem()
             {
                 Tag = it.Url?.Replace(@"/releases", ""),
-                Header = string.Format(ResUI.menuWebsiteItem, it.CoreType.ToString().Replace("_", " ")).UpperFirstChar()
+                Header = string.Format(ResUI.menuWebsiteItem, it.CoreType.ToDisplayName().Replace("_", " ")).UpperFirstChar()
             };
             item.Click += MenuItem_Click;
             menuHelp.Items.Add(item);
