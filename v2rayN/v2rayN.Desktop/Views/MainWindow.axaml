@@ -94,6 +94,7 @@
 
                     <MenuItem x:Name="menuHelp" Header="{x:Static resx:ResUI.menuHelp}">
                         <MenuItem x:Name="menuCheckUpdate" Header="{x:Static resx:ResUI.menuCheckUpdate}" />
+                        <MenuItem x:Name="menuAbout" Header="{x:Static resx:ResUI.menuAbout}" />
                         <Separator />
                     </MenuItem>
 

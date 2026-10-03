@@ -107,9 +107,11 @@ public static class ConfigHandler
 
         if (config.UiItem.CurrentLanguage.IsNullOrEmpty())
         {
+            // Chinese keeps upstream's behaviour, everything else starts in Russian: this fork is
+            // built for RU/CIS users. The language can still be changed in Settings -> Theme.
             config.UiItem.CurrentLanguage = Thread.CurrentThread.CurrentCulture.TwoLetterISOLanguageName.Equals("zh", StringComparison.CurrentCultureIgnoreCase)
                 ? Global.Languages.First()
-                : Global.Languages[2];
+                : Global.Languages.FirstOrDefault(t => t.Equals("ru", StringComparison.OrdinalIgnoreCase)) ?? Global.Languages[2];
         }
 
         config.ConstItem ??= new ConstItem();

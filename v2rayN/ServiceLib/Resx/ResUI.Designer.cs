@@ -4661,6 +4661,42 @@ namespace ServiceLib.Resx {
                 return ResourceManager.GetString("TbBuildInfo", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   查找类似 About 的本地化字符串。
+        /// </summary>
+        public static string menuAbout {
+            get {
+                return ResourceManager.GetString("menuAbout", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   查找类似 Based on {0} {1} 的本地化字符串。
+        /// </summary>
+        public static string AboutBuiltOn {
+            get {
+                return ResourceManager.GetString("AboutBuiltOn", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   查找类似 License: {0} 的本地化字符串。
+        /// </summary>
+        public static string AboutLicense {
+            get {
+                return ResourceManager.GetString("AboutLicense", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   查找类似 Open releases page 的本地化字符串。
+        /// </summary>
+        public static string AboutReleases {
+            get {
+                return ResourceManager.GetString("AboutReleases", resourceCulture);
+            }
+        }
         
         /// <summary>
         ///   查找类似 New Port for LAN 的本地化字符串。

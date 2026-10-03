@@ -726,6 +726,18 @@
   <data name="TbBuildInfo" xml:space="preserve">
     <value>{0} — built on {1}</value>
   </data>
+  <data name="menuAbout" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="AboutBuiltOn" xml:space="preserve">
+    <value>Based on {0} {1}</value>
+  </data>
+  <data name="AboutLicense" xml:space="preserve">
+    <value>License: {0}</value>
+  </data>
+  <data name="AboutReleases" xml:space="preserve">
+    <value>Open releases page</value>
+  </data>
   <data name="TbSettingsPass" xml:space="preserve">
     <value>Auth pass</value>
   </data>

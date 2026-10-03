@@ -92,6 +92,7 @@ git push
 # 4. GitHub → Releases → Create a new release
 #    тег:      1.0.2
 #    ассет:    dist\v2crackN-windows-64.zip
+#    текст:    добавить sha256 (печатает pack.ps1)
 ```
 
 Имя ассета **должно** совпадать с `Global.AppReleaseAssetName`:

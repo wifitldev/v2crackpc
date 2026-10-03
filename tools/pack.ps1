@@ -81,6 +81,10 @@ if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $pubDir '*') -DestinationPath $zip -CompressionLevel Optimal
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 
+# checksum, so users (and the release notes) can verify the download
+$hash = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLower()
+[System.IO.File]::WriteAllText("$zip.sha256", "$hash *$asset`n")
+
 # read the current version so the hint never goes stale
 $props = Join-Path $root 'v2rayN\Directory.Build.props'
 $ver = '?'
@@ -91,5 +95,6 @@ if (Test-Path $props) {
 
 Write-Host ''
 Write-Host "OK  $zip  ($size MB)" -ForegroundColor Green
+Write-Host "sha256 $hash" -ForegroundColor Yellow
 Write-Host "Upload it to a GitHub release with the tag $ver -"
 Write-Host 'the in-app updater looks for exactly this asset name.'

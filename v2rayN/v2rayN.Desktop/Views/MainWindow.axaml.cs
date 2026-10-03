@@ -26,6 +26,7 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
         menuSettingsSetUWP.Click += MenuSettingsSetUWP_Click;
         menuPromotion.Click += MenuPromotion_Click;
         menuCheckUpdate.Click += MenuCheckUpdate_Click;
+        menuAbout.Click += MenuAbout_Click;
         btnNewUpdate.Click += MenuCheckUpdate_Click;
         menuBackupAndRestore.Click += MenuBackupAndRestore_Click;
         menuClose.Click += MenuClose_Click;
@@ -286,6 +287,11 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
         DialogHost.Show(_checkUpdateView);
 
         AppEvents.HasUpdateNotified.Publish(false);
+    }
+
+    private void MenuAbout_Click(object? sender, RoutedEventArgs e)
+    {
+        DialogHost.Show(new AboutView());
     }
 
     private void MenuBackupAndRestore_Click(object? sender, RoutedEventArgs e)

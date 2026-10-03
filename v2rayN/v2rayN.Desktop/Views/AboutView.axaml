@@ -1,0 +1,45 @@
+<UserControl
+    x:Class="v2rayN.Desktop.Views.AboutView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    d:DesignHeight="360"
+    d:DesignWidth="520"
+    mc:Ignorable="d">
+    <Border
+        Margin="{StaticResource Margin8}"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Center"
+        Theme="{DynamicResource CardBorder}">
+        <StackPanel Width="480" Margin="{StaticResource Margin8}">
+            <StackPanel Orientation="Horizontal">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock x:Name="txtName" FontSize="20" FontWeight="Bold" />
+                    <TextBlock
+                        x:Name="txtVersion"
+                        Margin="0,2,0,0"
+                        Opacity="0.7" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock x:Name="txtBuiltOn" Margin="0,16,0,0" TextWrapping="Wrap" />
+            <TextBlock x:Name="txtLicense" Margin="0,4,0,0" TextWrapping="Wrap" />
+            <TextBlock x:Name="txtRepo" Margin="0,4,0,0" TextWrapping="Wrap" />
+
+            <StackPanel
+                Margin="0,16,0,0"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <Button
+                    x:Name="btnReleases"
+                    Width="200"
+                    Margin="{StaticResource Margin4}" />
+                <Button
+                    x:Name="btnClose"
+                    Width="100"
+                    Margin="{StaticResource Margin4}" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

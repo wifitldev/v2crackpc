@@ -27,6 +27,7 @@ public partial class MainWindow
         menuPromotion.Click += MenuPromotion_Click;
         menuClose.Click += MenuClose_Click;
         menuCheckUpdate.Click += MenuCheckUpdate_Click;
+        menuAbout.Click += MenuAbout_Click;
         btnNewUpdate.Click += MenuCheckUpdate_Click;
         menuBackupAndRestore.Click += MenuBackupAndRestore_Click;
 
@@ -290,6 +291,11 @@ public partial class MainWindow
         DialogHost.Show(_checkUpdateView, "RootDialog");
 
         AppEvents.HasUpdateNotified.Publish(false);
+    }
+
+    private void MenuAbout_Click(object sender, RoutedEventArgs e)
+    {
+        DialogHost.Show(new AboutView(), "RootDialog");
     }
 
     private void MenuBackupAndRestore_Click(object sender, RoutedEventArgs e)
