@@ -423,6 +423,9 @@
   <data name="menuPromotion" xml:space="preserve">
     <value>推广</value>
   </data>
+  <data name="menuTelegram" xml:space="preserve">
+    <value>Telegram</value>
+  </data>
   <data name="menuReload" xml:space="preserve">
     <value>重启服务</value>
   </data>

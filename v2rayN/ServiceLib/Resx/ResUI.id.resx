@@ -420,6 +420,9 @@
   <data name="menuPromotion" xml:space="preserve">
     <value>Promosi</value>
   </data>
+  <data name="menuTelegram" xml:space="preserve">
+    <value>Telegram</value>
+  </data>
   <data name="menuReload" xml:space="preserve">
     <value>Muat ulang layanan</value>
   </data>

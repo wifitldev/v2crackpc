@@ -284,16 +284,16 @@
                         <Separator />
                         <Menu Margin="0,1" Style="{StaticResource ToolbarMenu}">
                             <MenuItem
-                                x:Name="menuPromotion"
+                                x:Name="menuTelegram"
                                 Padding="{StaticResource MarginLeftRight8}"
-                                AutomationProperties.Name="{x:Static resx:ResUI.menuPromotion}">
+                                AutomationProperties.Name="{x:Static resx:ResUI.menuTelegram}">
                                 <MenuItem.Header>
                                     <StackPanel Orientation="Horizontal">
                                         <materialDesign:PackIcon
                                             Margin="{StaticResource MarginRight8}"
                                             VerticalAlignment="Center"
-                                            Kind="VolumeHigh" />
-                                        <TextBlock Text="{x:Static resx:ResUI.menuPromotion}" />
+                                            Kind="Send" />
+                                        <TextBlock Text="{x:Static resx:ResUI.menuTelegram}" />
                                     </StackPanel>
                                 </MenuItem.Header>
                             </MenuItem>

@@ -1438,6 +1438,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Telegram 的本地化字符串。
+        /// </summary>
+        public static string menuTelegram {
+            get {
+                return ResourceManager.GetString("menuTelegram", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Part Node Latency Test 的本地化字符串。
         /// </summary>
         public static string menuProxiesDelaytestPart {

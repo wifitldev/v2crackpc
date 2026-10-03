@@ -54,7 +54,8 @@ public class Global
 
     #endregion v2crackNG fork settings
 
-    public const string PromotionUrl = @"aHR0cHM6Ly85LjIzNDQ1Ni54eXovYWJjLmh0bWw=";
+    // v2crackNG: the upstream "Promotion" banner is gone, this opens our Telegram channel
+    public const string TelegramUrl = "https://t.me/v2crackNG";
     public const string ConfigFileName = "guiNConfig.json";
     public const string CoreConfigFileName = "config.json";
     public const string CorePreConfigFileName = "configPre.json";
