@@ -309,6 +309,9 @@
   <data name="LvRemarks" xml:space="preserve">
     <value>Псевдоним</value>
   </data>
+  <data name="LvLocation" xml:space="preserve">
+    <value>Локация</value>
+  </data>
   <data name="LvUrl" xml:space="preserve">
     <value>URL (необязательно)</value>
   </data>

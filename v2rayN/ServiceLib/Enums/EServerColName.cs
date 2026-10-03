@@ -4,6 +4,7 @@ public enum EServerColName
 {
     Def = 0,
     ConfigType,
+    Location,
     Remarks,
     Address,
     Port,

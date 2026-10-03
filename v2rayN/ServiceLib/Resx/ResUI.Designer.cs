@@ -610,6 +610,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 Location 的本地化字符串。
+        /// </summary>
+        public static string LvLocation {
+            get {
+                return ResourceManager.GetString("LvLocation", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Speed (MB/s) 的本地化字符串。
         /// </summary>
         public static string LvTestSpeed {

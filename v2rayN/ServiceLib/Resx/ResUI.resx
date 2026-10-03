@@ -309,6 +309,9 @@
   <data name="LvRemarks" xml:space="preserve">
     <value>Remarks</value>
   </data>
+  <data name="LvLocation" xml:space="preserve">
+    <value>Location</value>
+  </data>
   <data name="LvUrl" xml:space="preserve">
     <value>URL (optional)</value>
   </data>

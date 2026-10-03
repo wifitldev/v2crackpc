@@ -285,6 +285,11 @@
                         ExName="ConfigType"
                         Header="{x:Static resx:ResUI.LvServiceType}" />
                     <base:MyDGTextColumn
+                        Width="50"
+                        Binding="{Binding Location}"
+                        ExName="Location"
+                        Header="{x:Static resx:ResUI.LvLocation}" />
+                    <base:MyDGTextColumn
                         Width="150"
                         Binding="{Binding Remarks}"
                         ExName="Remarks"

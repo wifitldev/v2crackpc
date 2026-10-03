@@ -29,6 +29,12 @@ public partial class ProfileItemModel : ReactiveObject
     [Reactive]
     public partial string IpInfo { get; set; }
 
+    /// <summary>
+    /// Flag emoji of the node country, filled from the tested IP info or from the remark.
+    /// </summary>
+    [Reactive]
+    public partial string Location { get; set; }
+
     [Reactive]
     public partial string TodayUp { get; set; }
 

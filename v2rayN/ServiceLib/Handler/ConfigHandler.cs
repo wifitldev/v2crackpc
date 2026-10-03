@@ -1055,6 +1055,7 @@ public static class ConfigHandler
                               Speed = t33?.Speed ?? 0,
                               Sort = t33?.Sort ?? 0,
                               IpInfo = t33?.IpInfo ?? string.Empty,
+                              Location = CountryExtension.ResolveLocationFlag(t33?.IpInfo, t.Remarks),
                               TodayDown = (t22?.TodayDown ?? 0).ToString("D16"),
                               TodayUp = (t22?.TodayUp ?? 0).ToString("D16"),
                               TotalDown = (t22?.TotalDown ?? 0).ToString("D16"),
@@ -1068,6 +1069,7 @@ public static class ConfigHandler
             lstProfile = name switch
             {
                 EServerColName.ConfigType => lstProfile.OrderBy(t => t.ConfigType).ToList(),
+                EServerColName.Location => lstProfile.OrderBy(t => t.Location).ToList(),
                 EServerColName.Remarks => lstProfile.OrderBy(t => t.Remarks).ToList(),
                 EServerColName.Address => lstProfile.OrderBy(t => t.Address).ToList(),
                 EServerColName.Port => lstProfile.OrderBy(t => t.Port).ToList(),
@@ -1089,6 +1091,7 @@ public static class ConfigHandler
             lstProfile = name switch
             {
                 EServerColName.ConfigType => lstProfile.OrderByDescending(t => t.ConfigType).ToList(),
+                EServerColName.Location => lstProfile.OrderByDescending(t => t.Location).ToList(),
                 EServerColName.Remarks => lstProfile.OrderByDescending(t => t.Remarks).ToList(),
                 EServerColName.Address => lstProfile.OrderByDescending(t => t.Address).ToList(),
                 EServerColName.Port => lstProfile.OrderByDescending(t => t.Port).ToList(),
