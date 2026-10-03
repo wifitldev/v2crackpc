@@ -1,80 +1,167 @@
-# v2rayN
+# v2crackN
 
-### A GUI client for Windows, Linux and macOS. Support [Xray](https://github.com/XTLS/Xray-core) and [sing-box](https://github.com/SagerNet/sing-box) and [others](https://github.com/2dust/v2rayN/wiki/List-of-supported-cores)
+**Десктопный (Windows) клиент-прокси** — форк [2dust/v2rayN](https://github.com/2dust/v2rayN)
+с доработками из мобильного проекта **v2crackNG**.
 
-[![CodeFactor](https://www.codefactor.io/repository/github/2dust/v2rayn/badge)](https://www.codefactor.io/repository/github/2dust/v2rayn)
-[![Release](https://img.shields.io/github/v/release/2dust/v2rayN?logo=github&label=Release)](https://github.com/2dust/v2rayN/releases)
-[![Downloads](https://img.shields.io/github/downloads/2dust/v2rayN/latest/total?logo=github&label=Downloads)](https://github.com/2dust/v2rayN/releases)
-[![Telegram](https://img.shields.io/badge/Telegram-Chat-26A5E4?logo=telegram)](https://t.me/v2rayn)
- 
-[![Windows](https://img.shields.io/badge/Windows-supported-0078D6?logo=windows)](https://github.com/2dust/v2rayN) 
-[![Linux](https://img.shields.io/badge/Linux-supported-FCC624?logo=linux&logoColor=000)](https://github.com/2dust/v2rayN) 
-[![macOS](https://img.shields.io/badge/macOS-supported-000000?logo=apple)](https://github.com/2dust/v2rayN) 
-[![GPG Signed](https://img.shields.io/badge/GPG-signed-4B32C3?logo=gnuprivacyguard)](https://github.com/2dust/v2rayN)
+[![Release](https://img.shields.io/github/v/release/wifitldev/v2crackpc?logo=github&label=Release)](https://github.com/wifitldev/v2crackpc/releases)
+[![Downloads](https://img.shields.io/github/downloads/wifitldev/v2crackpc/latest/total?logo=github&label=Downloads)](https://github.com/wifitldev/v2crackpc/releases)
+[![Windows](https://img.shields.io/badge/Windows-supported-0078D6?logo=windows)](https://github.com/wifitldev/v2crackpc)
+[![License](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
 
+> A Windows GUI client for Xray / sing-box, forked from v2rayN.
 
 ---
 
-## Download / 下载
+## Скачать
 
-Download the latest release here:
+**https://github.com/wifitldev/v2crackpc/releases**
 
-在这里下载最新版本：
+Архив `v2crackN-windows-64.zip` — самодостаточный, **.NET устанавливать не нужно**.
 
-[https://github.com/2dust/v2rayN/releases](https://github.com/2dust/v2rayN/releases)
+### Установка
+1. Распаковать архив в любую папку (например `C:\Programs\v2crackN`).
+2. Запустить `v2crackN.exe`.
 
-
-> [!TIP]
-> v2rayN is the desktop version. For the mobile version, please visit the v2rayNG \
-> v2rayN 是电脑版，手机版请访问 v2rayNG
->
-> https://github.com/2dust/v2rayNG
+Ядро (Xray, sing-box), `geoip.dat`, `geosite.dat` и `wintun.dll` **уже внутри** — докачивать ничего не надо.
 
 ---
 
-## Documentation / 使用文档
+## Что отличается от обычного v2rayN
 
-Read the Wiki for usage guides and configuration details.
+| Фича | Описание |
+| --- | --- |
+| **Брендирование** | Имя `v2crackN`, свой EXE, заголовки окон, папка данных, свои иконки |
+| **Свои обновления** | Обновления берутся из этого репозитория (`Global.AppRepo = "wifitldev/v2crackpc"`), а не с 2dust/v2rayN |
+| **Принудительная подписка** | Создаётся при **каждом** старте, **удалить и переименовать нельзя**, обновляется автоматически через 3 с после запуска |
+| **Проверка версии** | Код проверки на собственном бэкенде есть (`BackendVersionCheckService`), но **выключен**: `Global.AppVersionCheckUrl = ""` |
+| **Иконки** | Свои иконки приложения и значки в трее + генератор `tools/IconGen` |
+| **Пресеты RU/IR** | `Settings → Regional Presets → Default / Russia / Iran` — это **уже было** в v2rayN, ничего не менялось |
 
-请阅读 Wiki 获取使用说明和配置教程。
+Полное описание всех правок: **[ЧТО_ИЗМЕНЕНО.md](ЧТО_ИЗМЕНЕНО.md)**
 
-[https://github.com/2dust/v2rayN/wiki](https://github.com/2dust/v2rayN/wiki)
+### Постоянная подписка
+
+Задаётся константами в [`v2rayN/ServiceLib/Global.cs`](v2rayN/ServiceLib/Global.cs):
+
+```csharp
+PermanentSubId   = "permanent_v2crackn";
+PermanentSubUrl  = "...";   // адрес вашей подписки
+```
+
+Логика: `ConfigHandler.EnsurePermanentSubscription()` вызывается из `AppManager.InitApp()`
+и каждый раз возвращает подписку к исходному состоянию — её нельзя удалить (`DeleteSubItem`
+возвращает `-1`), переименовать или перенаправить на другой URL.
 
 ---
 
-## Supported Platforms / 支持平台
+## Сборка из исходников
 
-| Platform / 平台 | x64 | x86 | arm64 | riscv64 | loong64 |
-| --- | --- | --- | --- | --- | --- |
-| Windows | ✅ | ✅ | ✅ | - | - |
-| Linux | ✅ | - | ✅ | ✅ | ✅ |
-| macOS | ✅ | - | ✅ | - | - |
+Требуется **.NET SDK 10**.
 
-Minimum OS requirements: [Release files introduction](https://github.com/2dust/v2rayN/wiki/Release-files-introduction) / 最低系统要求：[发布文件介绍](https://github.com/2dust/v2rayN/wiki/Release-files-introduction)
+```powershell
+git clone https://github.com/wifitldev/v2crackpc.git
+cd v2crackpc
+
+dotnet build v2rayN\v2rayN.sln -c Release
+dotnet test  v2rayN\v2rayN.sln -c Release --no-build   # 125 тестов
+```
+
+| Проект | Назначение |
+| --- | --- |
+| `v2rayN\v2rayN` | WPF — основная сборка под Windows |
+| `v2rayN\v2rayN.Desktop` | Avalonia — кроссплатформенная (Linux / macOS) |
+
+> [!NOTE]
+> В исходниках **нет бинарных ядер** — как и в апстриме. Для готового релиза
+> ядра подкладываются скриптом упаковки (см. ниже) или скачиваются в меню
+> **Help → Check Update**.
 
 ---
 
-## GPG Verification / GPG 签名校验
+## Как выпустить новую версию
 
-Release files are signed with GPG to verify authenticity and integrity, helping prevent mirror, ISP, or CDN hijacking.
+```powershell
+# 1. поднять версию в v2rayN\Directory.Build.props (например 7.25.5)
+# 2. собрать самодостаточный архив с ядрами
+powershell -File tools\pack.ps1
+# 3. закоммитить и запушить
+git add -A
+git commit -m "release 7.25.5"
+git push
 
-发布文件已使用 GPG 签名，可用于校验文件真实性与完整性，预防镜像站、运营商或 CDN 劫持。
+# 4. GitHub → Releases → Create a new release
+#    тег:      7.25.5
+#    ассет:    dist\v2crackN-windows-64.zip
+```
 
-### Fingerprint / 公钥指纹
+Имя ассета **должно** совпадать с `Global.AppReleaseAssetName`:
 
-```text
-7694 5E9F 3E9A 168F 8070 F195 805D 661C
-134D FAF6 8903 C199 463C 31E5 AE90 3AE0
+```
+v2crackN-windows-64.zip
+v2crackN-windows-arm64.zip
+v2crackN-linux-64.zip
+v2crackN-linux-arm64.zip
+v2crackN-macos-64.zip
+v2crackN-macos-arm64.zip
+```
+
+Как только релиз опубликован, клиент сам подхватит его:
+**Help → Check Update** сверяет тег релиза с текущей версией.
+
+`tools\pack.ps1` принимает параметры, если ядра лежат не там:
+
+```powershell
+.\tools\pack.ps1 -CoreSource "C:\папка\с\ядром" -SingBoxExe "C:\path\sing-box.exe"
 ```
 
 ---
 
-## Community / 社区
+## Структура репозитория
 
-Telegram Group / Telegram 群组：
+```
+v2crackpc/
+├── v2rayN/
+│   ├── ServiceLib/          # общая логика: модели, хендлеры, вью-модели, сервисы
+│   ├── v2rayN/              # WPF-приложение (Windows)
+│   └── v2rayN.Desktop/      # Avalonia-приложение (Windows/Linux/macOS)
+├── tools/
+│   ├── IconGen/             # генератор иконок (dotnet run --project tools\IconGen)
+│   └── pack.ps1             # сборка релизного zip с ядрами
+├── _icon/                   # исходник иконки + превью
+├── ЧТО_ИЗМЕНЕНО.md          # описание всех отличий от v2rayN
+└── README.md
+```
 
-[https://t.me/v2rayN](https://t.me/v2rayN)
+Точки входа, куда править при брендинге или настройках:
 
-Telegram Channel / Telegram 频道：
+| Что | Где |
+| --- | --- |
+| Имя приложения, репо обновлений, вечная подписка | `v2rayN/ServiceLib/Global.cs` |
+| Ссылки на скачивание ядер и апдейтов | `v2rayN/ServiceLib/Manager/CoreInfoManager.cs` |
+| Логика вечной подписки | `v2rayN/ServiceLib/Handler/ConfigHandler.cs` |
+| Проверка версии на бэкенде | `v2rayN/ServiceLib/Services/BackendVersionCheckService.cs` |
+| Версия сборки | `v2rayN/Directory.Build.props` |
 
-[https://t.me/github_2dust](https://t.me/github_2dust)
+---
+
+## Поддерживаемые ядра
+
+[Xray](https://github.com/XTLS/Xray-core) · [sing-box](https://github.com/SagerNet/sing-box) ·
+[mihomo](https://github.com/MetaCubeX/mihomo) · v2fly · hysteria и [другие](https://github.com/2dust/v2rayN/wiki/List-of-supported-cores)
+
+---
+
+## Что пока не сделано
+
+- Сборки под **Linux** и **macOS** — код для них есть (`v2rayN.Desktop`), но не собирался и не тестировался
+- Релизы подписываются только загрузкой через GitHub, **GPG-подписи нет** (в отличие от апстрима)
+- Своего бэкенда для принудительной проверки версии нет — механизм выключен
+
+---
+
+## Лицензия и авторство
+
+[GPL-3.0](LICENSE).
+
+Форк проекта **[2dust/v2rayN](https://github.com/2dust/v2rayN)** — большое спасибо авторам
+за клиент, на котором всё это построено. Мобильный аналог — **[2dust/v2rayNG](https://github.com/2dust/v2rayNG)**.
