@@ -81,16 +81,16 @@ dotnet test  v2rayN\v2rayN.sln -c Release --no-build   # 125 тестов
 ## Как выпустить новую версию
 
 ```powershell
-# 1. поднять версию в v2rayN\Directory.Build.props (например 7.25.5)
+# 1. поднять версию в v2rayN\Directory.Build.props (например 1.0.2)
 # 2. собрать самодостаточный архив с ядрами
 powershell -File tools\pack.ps1
 # 3. закоммитить и запушить
 git add -A
-git commit -m "release 7.25.5"
+git commit -m "release 1.0.2"
 git push
 
 # 4. GitHub → Releases → Create a new release
-#    тег:      7.25.5
+#    тег:      1.0.2
 #    ассет:    dist\v2crackN-windows-64.zip
 ```
 

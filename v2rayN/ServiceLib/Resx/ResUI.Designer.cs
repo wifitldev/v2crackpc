@@ -4645,11 +4645,20 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
-        ///   查找类似 v2rayN settings 的本地化字符串。
+        ///   查找类似 v2crackN settings 的本地化字符串。
         /// </summary>
         public static string TbSettingsN {
             get {
                 return ResourceManager.GetString("TbSettingsN", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 {0} — built on {1} 的本地化字符串。
+        /// </summary>
+        public static string TbBuildInfo {
+            get {
+                return ResourceManager.GetString("TbBuildInfo", resourceCulture);
             }
         }
         

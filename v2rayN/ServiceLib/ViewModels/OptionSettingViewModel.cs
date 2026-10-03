@@ -78,6 +78,18 @@ public partial class OptionSettingViewModel : MyReactiveObject, ICloseable
 
     #endregion UI visibility
 
+    #region Build info
+
+    /// <summary>
+    /// Read-only line shown in Settings: "v2crackN 1.0.1 — на базе v2rayN 7.25.4".
+    /// </summary>
+    public string BuildInfoDisplay =>
+        string.Format(ResUI.TbBuildInfo,
+            $"{Global.AppName} {Utils.GetVersionInfo()}",
+            $"{Global.UpstreamName} {Global.UpstreamVersion}");
+
+    #endregion Build info
+
     #region System proxy
 
     [Reactive] public partial bool NotProxyLocalAddress { get; set; }

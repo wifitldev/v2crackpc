@@ -22,6 +22,15 @@ public class Global
     public const string AppReleaseAssetName = "v2crackN";
 
     /// <summary>
+    /// Upstream project this fork is built on: shown in Settings as
+    /// "v2crackN 1.0.1 — на базе v2rayN 7.25.4".
+    /// UpstreamVersion tracks 2dust/v2rayN, not our own Version in Directory.Build.props.
+    /// </summary>
+    public const string UpstreamName = "v2rayN";
+
+    public const string UpstreamVersion = "7.25.4";
+
+    /// <summary>
     /// Own backend used for the version check / forced update.
     /// DISABLED: the startup call in MainWindowViewModel.Init() is commented out, and the url is
     /// deliberately empty, so no request is sent at all.

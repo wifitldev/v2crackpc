@@ -45,6 +45,15 @@
                 Style="{StaticResource DefButton}" />
         </StackPanel>
 
+        <TextBlock
+            x:Name="txtBuildInfo"
+            Margin="{StaticResource Margin4}"
+            DockPanel.Dock="Bottom"
+            HorizontalAlignment="Center"
+            FontSize="12"
+            Opacity="0.75"
+            Text="" />
+
         <TabControl HorizontalContentAlignment="Left">
             <TabItem Header="{x:Static resx:ResUI.TbSettingsCore}">
                 <ScrollViewer VerticalScrollBarVisibility="Visible">

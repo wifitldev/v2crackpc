@@ -81,7 +81,15 @@ if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $pubDir '*') -DestinationPath $zip -CompressionLevel Optimal
 $size = [math]::Round((Get-Item $zip).Length / 1MB, 1)
 
+# read the current version so the hint never goes stale
+$props = Join-Path $root 'v2rayN\Directory.Build.props'
+$ver = '?'
+if (Test-Path $props) {
+    $m = [regex]::Match((Get-Content $props -Raw), '<Version>([^<]+)</Version>')
+    if ($m.Success) { $ver = $m.Groups[1].Value }
+}
+
 Write-Host ''
 Write-Host "OK  $zip  ($size MB)" -ForegroundColor Green
-Write-Host 'Upload it to a GitHub release of v2crack/v2crackN with the tag v7.25.4 -'
+Write-Host "Upload it to a GitHub release with the tag $ver -"
 Write-Host 'the in-app updater looks for exactly this asset name.'
