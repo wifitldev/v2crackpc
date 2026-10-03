@@ -3,6 +3,11 @@
 	<PropertyGroup>
 		<OutputType>WinExe</OutputType>
 		<TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+		<AssemblyName>v2crackN</AssemblyName>
+		<Product>v2crackN</Product>
+		<AssemblyTitle>v2crackN</AssemblyTitle>
+		<Company>v2crackNG</Company>
+		<Description>v2crackN - a V2Ray/Xray client for Windows, Linux and macOS</Description>
 		<GenerateSatelliteAssembliesForCore>true</GenerateSatelliteAssembliesForCore>
 		<UseWPF>true</UseWPF>
 		<ApplicationIcon>Resources\v2rayN.ico</ApplicationIcon>

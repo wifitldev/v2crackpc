@@ -5,7 +5,11 @@
 		<ApplicationIcon>Assets\v2rayN.ico</ApplicationIcon>
 		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
 		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-		<AssemblyName>v2rayN</AssemblyName>
+		<AssemblyName>v2crackN</AssemblyName>
+		<Product>v2crackN</Product>
+		<AssemblyTitle>v2crackN</AssemblyTitle>
+		<Company>v2crackNG</Company>
+		<Description>v2crackN - a V2Ray/Xray client for Windows, Linux and macOS</Description>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<CETCompat>false</CETCompat>
 	</PropertyGroup>

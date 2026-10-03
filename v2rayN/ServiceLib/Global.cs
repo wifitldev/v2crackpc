@@ -2,11 +2,48 @@ namespace ServiceLib;
 
 public class Global
 {
-    public const string AppName = "v2rayN";
+    public const string AppName = "v2crackN";
     public const string GithubUrl = "https://github.com";
     public const string GithubApiUrl = "https://api.github.com/repos";
     public const string GeoUrl = "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/{0}.dat";
     public const string SingboxRulesetUrl = @"https://raw.githubusercontent.com/2dust/sing-box-rules/rule-set-{0}/{1}.srs";
+
+    #region v2crackNG fork settings
+
+    /// <summary>
+    /// GitHub repo (owner/name) used for the app's own self-update.
+    /// Release assets must be named {AppReleaseAssetName}-windows-64.zip, -windows-arm64.zip, -linux-64.zip, ...
+    /// </summary>
+    public const string AppRepo = "wifitldev/v2crackpc";
+
+    /// <summary>
+    /// Base name of the release assets uploaded to AppRepo.
+    /// </summary>
+    public const string AppReleaseAssetName = "v2crackN";
+
+    /// <summary>
+    /// Own backend used for the version check / forced update.
+    /// DISABLED: the startup call in MainWindowViewModel.Init() is commented out, and the url is
+    /// deliberately empty, so no request is sent at all.
+    /// Intended value: https://junify.fun/api/check (currently answers 404).
+    /// POST {"device_id":"","app_version":"","os":""} -> {"type":"outdated"|"ok","version":""}
+    /// </summary>
+    public const string AppVersionCheckUrl = "";
+
+    /// <summary>
+    /// Page opened when the user agrees to update.
+    /// </summary>
+    public const string AppReleasePageUrl = "https://github.com/wifitldev/v2crackpc/releases";
+
+    /// <summary>
+    /// A permanent subscription that is recreated on every startup and cannot be removed or renamed.
+    /// </summary>
+    public const string PermanentSubId = "permanent_v2crackn";
+    public const string PermanentSubRemarks = "✨ Community ✨";
+    public const string PermanentSubUrl = "https://junify.fun/subs";
+    public const int PermanentSubAutoUpdateInterval = 60;
+
+    #endregion v2crackNG fork settings
 
     public const string PromotionUrl = @"aHR0cHM6Ly85LjIzNDQ1Ni54eXovYWJjLmh0bWw=";
     public const string ConfigFileName = "guiNConfig.json";
@@ -76,7 +113,7 @@ public class Global
 
     public const string UserEMail = "t@t.tt";
     public const string AutoRunRegPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    public const string AutoRunName = "v2rayNAutoRun";
+    public const string AutoRunName = "v2crackNAutoRun";
     public const string SystemProxyExceptionsWindows = "localhost;127.*;10.*;172.16.*;172.17.*;172.18.*;172.19.*;172.20.*;172.21.*;172.22.*;172.23.*;172.24.*;172.25.*;172.26.*;172.27.*;172.28.*;172.29.*;172.30.*;172.31.*;192.168.*";
     public const string SystemProxyExceptionsLinux = "localhost,127.0.0.0/8,::1";
     public const string RoutingRuleComma = "<COMMA>";
@@ -86,7 +123,7 @@ public class Global
     public const int MinFontSize = 8;
     public const int MinFontSizeCount = 13;
     public const string RebootAs = "rebootas";
-    public const string AvaAssets = "avares://v2rayN/Assets/";
+    public const string AvaAssets = "avares://v2crackN/Assets/";
     public const string LocalAppData = "V2RAYN_LOCAL_APPLICATION_DATA_V2";
     public const string V2RayLocalAsset = "V2RAY_LOCATION_ASSET";
     public const string XrayLocalAsset = "XRAY_LOCATION_ASSET";
@@ -665,7 +702,7 @@ public class Global
         { ECoreType.overtls, "ShadowsocksR-Live/overtls" },
         { ECoreType.shadowquic, "spongebob888/shadowquic" },
         { ECoreType.mieru, "enfein/mieru" },
-        { ECoreType.v2rayN, "2dust/v2rayN" },
+        { ECoreType.v2rayN, AppRepo },
     };
 
     public static readonly List<string> OtherGeoUrls =

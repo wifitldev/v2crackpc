@@ -115,6 +115,13 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
                 interaction.SetOutput(RxVoid.Default);
             }).DisposeWith(disposables);
 
+            // v2crackNG: blocking dialog for the forced version check
+            ViewModel.ShowYesNoInteraction.RegisterHandler(async interaction =>
+            {
+                var result = await UI.ShowYesNo(interaction.Input);
+                interaction.SetOutput(result == ButtonResult.Yes);
+            }).DisposeWith(disposables);
+
             AppEvents.SendSnackMsgRequested
               .AsObservable()
               .ObserveOn(RxSchedulers.MainThreadScheduler)

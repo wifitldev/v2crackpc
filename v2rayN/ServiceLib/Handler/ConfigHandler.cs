@@ -2170,6 +2170,70 @@ public static class ConfigHandler
     /// <param name="config">Current configuration</param>
     /// <param name="url">Subscription URL</param>
     /// <returns>0 if successful, -1 if failed</returns>
+    /// <summary>
+    /// Ensure that the built-in permanent subscription exists and keeps its own id, url and name.
+    /// It is re-applied on every startup, cannot be removed and cannot be repointed.
+    /// </summary>
+    public static async Task<SubItem?> EnsurePermanentSubscription()
+    {
+        try
+        {
+            var item = await SQLiteHelper.Instance.TableAsync<SubItem>()
+                .Where(t => t.Id == Global.PermanentSubId)
+                .FirstOrDefaultAsync();
+
+            var changed = false;
+            if (item is null)
+            {
+                item = new SubItem
+                {
+                    Id = Global.PermanentSubId,
+                    Remarks = Global.PermanentSubRemarks,
+                    Url = Global.PermanentSubUrl,
+                    Enabled = true,
+                    AutoUpdateInterval = Global.PermanentSubAutoUpdateInterval,
+                    Sort = 0,
+                };
+                changed = true;
+            }
+            else
+            {
+                if (item.Remarks != Global.PermanentSubRemarks)
+                {
+                    item.Remarks = Global.PermanentSubRemarks;
+                    changed = true;
+                }
+                if (item.Url != Global.PermanentSubUrl)
+                {
+                    item.Url = Global.PermanentSubUrl;
+                    changed = true;
+                }
+                if (!item.Enabled)
+                {
+                    item.Enabled = true;
+                    changed = true;
+                }
+                if (item.AutoUpdateInterval != Global.PermanentSubAutoUpdateInterval)
+                {
+                    item.AutoUpdateInterval = Global.PermanentSubAutoUpdateInterval;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                await SQLiteHelper.Instance.ReplaceAsync(item);
+            }
+
+            return item;
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("EnsurePermanentSubscription", ex);
+            return null;
+        }
+    }
+
     public static async Task<int> AddSubItem(Config config, string url)
     {
         //already exists
@@ -2211,6 +2275,12 @@ public static class ConfigHandler
     /// <returns>0 if successful, -1 if failed</returns>
     public static async Task<int> AddSubItem(Config config, SubItem subItem)
     {
+        //The permanent subscription cannot be renamed or repointed by the user
+        if (subItem.Id == Global.PermanentSubId)
+        {
+            return 0;
+        }
+
         var item = await AppManager.Instance.GetSubItem(subItem.Id);
         if (item is null)
         {
@@ -2299,6 +2369,12 @@ public static class ConfigHandler
     /// <returns>0 if successful</returns>
     public static async Task<int> DeleteSubItem(Config config, string id)
     {
+        //The permanent subscription is never removable
+        if (id == Global.PermanentSubId)
+        {
+            return -1;
+        }
+
         var item = await AppManager.Instance.GetSubItem(id);
         if (item is null)
         {

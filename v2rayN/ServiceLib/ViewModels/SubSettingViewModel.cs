@@ -26,6 +26,13 @@ public partial class SubSettingViewModel : MyReactiveObject
            x => x.SelectedSource,
            selectedSource => selectedSource != null && !selectedSource.Id.IsNullOrEmpty());
 
+        //The permanent subscription can be shared, but neither removed nor edited
+        var canModify = this.WhenAnyValue(
+           x => x.SelectedSource,
+           selectedSource => selectedSource != null
+               && !selectedSource.Id.IsNullOrEmpty()
+               && selectedSource.Id != Global.PermanentSubId);
+
         SubAddCmd = ReactiveCommand.CreateFromTask(async () =>
         {
             await EditSubAsync(true);
@@ -33,11 +40,11 @@ public partial class SubSettingViewModel : MyReactiveObject
         SubDeleteCmd = ReactiveCommand.CreateFromTask(async () =>
         {
             await DeleteSubAsync();
-        }, canEditRemove);
+        }, canModify);
         SubEditCmd = ReactiveCommand.CreateFromTask(async () =>
         {
             await EditSubAsync(false);
-        }, canEditRemove);
+        }, canModify);
         SubShareCmd = ReactiveCommand.CreateFromTask(async () =>
         {
             await ShareSubInteraction.HandleSafe(SelectedSource?.Url);

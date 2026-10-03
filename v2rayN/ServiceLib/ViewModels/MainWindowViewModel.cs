@@ -7,6 +7,11 @@ public partial class MainWindowViewModel : MyReactiveObject
     public Interaction<RxVoid, string?> BrowseImageFileInteraction { get; } = new();
     public Interaction<bool?, RxVoid> ShowHideWindowInteraction { get; } = new();
 
+    /// <summary>
+    /// v2crackNG: blocking yes/no dialog used by the forced version check.
+    /// </summary>
+    public Interaction<string, bool> ShowYesNoInteraction { get; } = new();
+
     public bool DesignMode { get; set; }
 
     public ProfilesViewModel ProfilesViewModel { get; } = new();
@@ -345,6 +350,75 @@ public partial class MainWindowViewModel : MyReactiveObject
         await RefreshServersDispatcherAsync();
 
         await Reload();
+
+        // v2crackNG: refresh the permanent subscription once right after startup
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            await UpdateSubscriptionProcess(Global.PermanentSubId, false);
+        });
+
+        // v2crackNG: version check is DISABLED for now - the check endpoint is not ours
+        // and no longer exists. Uncomment to re-enable (see Global.AppVersionCheckUrl).
+        //_ = Task.Run(async () =>
+        //{
+        //    await Task.Delay(TimeSpan.FromSeconds(5));
+        //    await CheckBackendVersionAsync();
+        //});
+    }
+
+    /// <summary>
+    /// v2crackNG: forced update. When the backend answers "outdated", a blocking dialog is shown;
+    /// "No" exits the application.
+    /// </summary>
+    private async Task CheckBackendVersionAsync()
+    {
+        try
+        {
+            var result = await BackendVersionCheckService.CheckAsync();
+
+            //Fall back to the releases of the fork repository when the backend does not answer
+            if (!result.Outdated)
+            {
+                var updateService = new UpdateService(_config, (_, _) => Task.CompletedTask);
+                var gh = await updateService.CheckHasUpdateOnly(ECoreType.v2rayN, false, false);
+                if (gh.Success && gh.Version is not null)
+                {
+                    result = new BackendVersionCheckService.VersionCheckResult(
+                        true,
+                        gh.Version.ToStandardVersionString(),
+                        string.Empty);
+                }
+            }
+
+            if (!result.Outdated)
+            {
+                return;
+            }
+
+            var version = result.Version.IsNullOrEmpty() ? "?" : result.Version;
+            var msg = result.Message.IsNotEmpty()
+                ? result.Message
+                : string.Format(ResUI.MsgCheckUpdateHasNewVersion, Global.AppName, version);
+
+            msg += Environment.NewLine + Environment.NewLine
+                 + $"{ResUI.menuCheckUpdate} / {ResUI.menuExit}";
+
+            Logging.SaveLog($"CheckBackendVersionAsync: outdated, version={version}");
+
+            if (await ShowYesNoInteraction.HandleSafe(msg))
+            {
+                ProcUtils.ProcessStart(Global.AppReleasePageUrl);
+            }
+            else
+            {
+                await AppManager.Instance.AppExitAsync(true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog("CheckBackendVersionAsync", ex);
+        }
     }
 
     #endregion Init

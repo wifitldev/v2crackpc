@@ -92,6 +92,10 @@ public sealed class AppManager
 #pragma warning disable CS0618
         SQLiteHelper.Instance.CreateTable<ProfileGroupItem>();
 #pragma warning restore CS0618
+
+        // v2crackNG: (re)create the built-in permanent subscription on every startup
+        Task.Run(() => ConfigHandler.EnsurePermanentSubscription()).GetAwaiter().GetResult();
+
         return true;
     }
 

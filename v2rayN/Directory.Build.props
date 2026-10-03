@@ -10,7 +10,7 @@
         <CheckForOverflowUnderflow>true</CheckForOverflowUnderflow>
         <Nullable>annotations</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
-        <Authors>2dust</Authors>
+        <Authors>v2crackNG</Authors>
         <PackageLicenseExpression>GPL-3.0</PackageLicenseExpression>
         <Copyright>Copyright © 2017-$([System.DateTime]::UtcNow.Year) $(Authors)</Copyright>
         <InvariantGlobalization>false</InvariantGlobalization>
