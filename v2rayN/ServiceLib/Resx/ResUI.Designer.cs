@@ -4501,6 +4501,24 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 HWID (device id for subscriptions) 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsHwid {
+            get {
+                return ResourceManager.GetString("TbSettingsHwid", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Sent as x-hwid. Empty = don't send 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsHwidTip {
+            get {
+                return ResourceManager.GetString("TbSettingsHwidTip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Hysteria Max bandwidth (Up/Down) 的本地化字符串。
         /// </summary>
         public static string TbSettingsHysteriaBandwidth {

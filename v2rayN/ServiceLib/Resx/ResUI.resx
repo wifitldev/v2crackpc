@@ -1068,6 +1068,12 @@
   <data name="menuAddHysteria2Server" xml:space="preserve">
     <value>Add [Hysteria2]</value>
   </data>
+  <data name="TbSettingsHwid" xml:space="preserve">
+    <value>HWID (device id for subscriptions)</value>
+  </data>
+  <data name="TbSettingsHwidTip" xml:space="preserve">
+    <value>Sent as x-hwid. Empty = don't send</value>
+  </data>
   <data name="TbSettingsHysteriaBandwidth" xml:space="preserve">
     <value>Hysteria Max bandwidth (Up/Down)</value>
   </data>

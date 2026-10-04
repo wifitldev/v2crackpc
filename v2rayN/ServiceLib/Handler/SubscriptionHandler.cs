@@ -31,7 +31,7 @@ public static class SubscriptionHandler
                 }
 
                 // Create download handler
-                var downloadHandle = CreateDownloadHandler(item, hashCode, updateFunc);
+                var downloadHandle = CreateDownloadHandler(config, item, hashCode, updateFunc);
                 await updateFunc?.Invoke(false, $"{hashCode}{ResUI.MsgStartGettingSubscriptions}");
 
                 // Get all subscription content (main subscription + additional subscriptions)
@@ -80,11 +80,21 @@ public static class SubscriptionHandler
         return true;
     }
 
-    private static DownloadService CreateDownloadHandler(SubItem item, string hashCode, Func<bool, string, Task> updateFunc)
+    private static DownloadService CreateDownloadHandler(Config config, SubItem item, string hashCode, Func<bool, string, Task> updateFunc)
     {
         if (!HttpRequestHeadersHelper.TryParse(item.RequestHeaders, out var requestHeaders))
         {
             throw new FormatException(ResUI.SubRequestHeadersInvalid);
+        }
+
+        // Static Happ device identity of the Android fork. Only x-hwid is checked by providers,
+        // the rest makes the request look like the original client. A value set on the group wins.
+        foreach (var header in HappHeaders(config))
+        {
+            if (!requestHeaders.ContainsKey(header.Key))
+            {
+                requestHeaders[header.Key] = header.Value;
+            }
         }
 
         var downloadHandle = new DownloadService
@@ -97,6 +107,29 @@ public static class SubscriptionHandler
             updateFunc?.Invoke(false, $"{hashCode}{args.GetException().Message}");
         };
         return downloadHandle;
+    }
+
+    /// <summary>
+    /// Headers the Android fork sends on every request (HttpUtil.createProxyConnection).
+    /// x-hwid is the value editable in settings, the rest is fixed Happ device info.
+    /// </summary>
+    private static Dictionary<string, string> HappHeaders(Config config)
+    {
+        var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["x-hwid"] = config.ConstItem?.Hwid?.Trim() ?? string.Empty,
+            ["x-device-locale"] = "ru",
+            ["x-device-os"] = "Android",
+            ["x-ver-os"] = "14",
+            ["x-device-model"] = "KG5n",
+        };
+
+        if (headers["x-hwid"].Length == 0)
+        {
+            headers.Remove("x-hwid");
+        }
+
+        return headers;
     }
 
     private static async Task<string> DownloadSubscriptionContent(DownloadService downloadHandle, string url, bool blProxy, string userAgent)

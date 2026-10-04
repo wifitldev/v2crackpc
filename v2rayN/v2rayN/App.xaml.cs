@@ -63,6 +63,7 @@ public partial class App
     private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
         Logging.SaveLog("App_DispatcherUnhandledException", e.Exception);
+        Task.Run(() => CrashReportService.Report("DispatcherUnhandledException", e.Exception));
         e.Handled = true;
     }
 
@@ -70,13 +71,18 @@ public partial class App
     {
         if (e.ExceptionObject != null)
         {
-            Logging.SaveLog("CurrentDomain_UnhandledException", (Exception)e.ExceptionObject);
+            var ex = (Exception)e.ExceptionObject;
+            Logging.SaveLog("CurrentDomain_UnhandledException", ex);
+            // Process is about to die - send synchronously, the service has its own timeout.
+            CrashReportService.Report("AppDomainUnhandledException", ex);
         }
     }
 
     private void TaskScheduler_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
     {
         Logging.SaveLog("TaskScheduler_UnobservedTaskException", e.Exception);
+        Task.Run(() => CrashReportService.Report("UnobservedTaskException", e.Exception?.GetBaseException()));
+        e.SetObserved();
     }
 
     protected override void OnExit(ExitEventArgs e)

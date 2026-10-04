@@ -2280,9 +2280,17 @@ public static class ConfigHandler
     /// <returns>0 if successful, -1 if failed</returns>
     public static async Task<int> AddSubItem(Config config, SubItem subItem)
     {
-        //The permanent subscription cannot be renamed or repointed by the user
+        //The permanent subscription cannot be renamed or repointed by the user.
+        //Only its UpdateTime is allowed to change, otherwise the scheduler never
+        //sees the tick as saved and re-runs the update every minute.
         if (subItem.Id == Global.PermanentSubId)
         {
+            var existing = await AppManager.Instance.GetSubItem(subItem.Id);
+            if (existing is not null && existing.UpdateTime != subItem.UpdateTime)
+            {
+                existing.UpdateTime = subItem.UpdateTime;
+                await SQLiteHelper.Instance.ReplaceAsync(existing);
+            }
             return 0;
         }
 

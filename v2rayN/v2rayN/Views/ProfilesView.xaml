@@ -21,82 +21,90 @@
     </UserControl.Resources>
     <Grid>
         <DockPanel>
-            <WrapPanel Margin="{StaticResource Margin4}" DockPanel.Dock="Top">
-                <ListBox
-                    x:Name="lstGroup"
-                    MaxHeight="200"
-                    AutomationProperties.Name="{x:Static resx:ResUI.menuSubscription}"
-                    FontSize="{DynamicResource StdFontSize}"
-                    ItemContainerStyle="{StaticResource MyChipListBoxItem}"
-                    Style="{StaticResource MaterialDesignChoiceChipPrimaryOutlineListBox}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Remarks}" />
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+            <Border
+                Width="224"
+                DockPanel.Dock="Left"
+                BorderBrush="{DynamicResource MaterialDesignDivider}"
+                BorderThickness="0,0,1,0">
+                <DockPanel Margin="{StaticResource Margin4}">
+                    <!-- Pinned action row: never moves when the group chips change -->
+                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal">
+                        <Button
+                            x:Name="btnEditSub"
+                            Width="30"
+                            Height="30"
+                            Margin="{StaticResource MarginLeftRight4}"
+                            AutomationProperties.Name="{x:Static resx:ResUI.menuSubEdit}"
+                            Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
+                            ToolTip="{x:Static resx:ResUI.menuSubEdit}">
+                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="Edit" />
+                        </Button>
+                        <Button
+                            x:Name="btnAddSub"
+                            Width="30"
+                            Height="30"
+                            Margin="{StaticResource MarginLeftRight4}"
+                            AutomationProperties.Name="{x:Static resx:ResUI.menuSubAdd}"
+                            Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
+                            ToolTip="{x:Static resx:ResUI.menuSubAdd}">
+                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="Plus" />
+                        </Button>
+                        <Button
+                            x:Name="btnAutofitColumnWidth"
+                            Width="30"
+                            Height="30"
+                            Margin="{StaticResource MarginLeftRight4}"
+                            AutomationProperties.Name="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}"
+                            Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
+                            ToolTip="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}">
+                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="ArrowSplitVertical" />
+                        </Button>
+                        <Button
+                            x:Name="btnFastRealPing"
+                            Width="30"
+                            Height="30"
+                            Margin="{StaticResource MarginLeftRight4}"
+                            Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
+                            ToolTip="{x:Static resx:ResUI.menuFastRealPing}">
+                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="LightningBolt" />
+                        </Button>
+                        <Button
+                            x:Name="menuMixedTestServer"
+                            Width="30"
+                            Height="30"
+                            Margin="{StaticResource MarginLeftRight4}"
+                            Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
+                            ToolTip="{x:Static resx:ResUI.menuMixedTestServer}">
+                            <materialDesign:PackIcon VerticalAlignment="Center" Kind="Speedometer" />
+                        </Button>
+                    </StackPanel>
 
-                <Button
-                    x:Name="btnEditSub"
-                    Width="30"
-                    Height="30"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    AutomationProperties.Name="{x:Static resx:ResUI.menuSubEdit}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuSubEdit}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="Edit" />
-                </Button>
-                <Button
-                    x:Name="btnAddSub"
-                    Width="30"
-                    Height="30"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    AutomationProperties.Name="{x:Static resx:ResUI.menuSubAdd}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuSubAdd}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="Plus" />
-                </Button>
+                    <TextBox
+                        x:Name="txtServerFilter"
+                        DockPanel.Dock="Top"
+                        Margin="{StaticResource MarginLeftRight4}"
+                        VerticalContentAlignment="Center"
+                        materialDesign:HintAssist.Hint="{x:Static resx:ResUI.MsgServerTitle}"
+                        materialDesign:TextFieldAssist.HasClearButton="True"
+                        AutomationProperties.Name="{x:Static resx:ResUI.MsgServerTitle}"
+                        Style="{StaticResource DefTextBox}" />
 
-                <TextBox
-                    x:Name="txtServerFilter"
-                    Width="200"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    VerticalContentAlignment="Center"
-                    materialDesign:HintAssist.Hint="{x:Static resx:ResUI.MsgServerTitle}"
-                    materialDesign:TextFieldAssist.HasClearButton="True"
-                    AutomationProperties.Name="{x:Static resx:ResUI.MsgServerTitle}"
-                    Style="{StaticResource DefTextBox}" />
-
-                <Button
-                    x:Name="btnAutofitColumnWidth"
-                    Width="30"
-                    Height="30"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    AutomationProperties.Name="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuProfileAutofitColumnWidth}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="ArrowSplitVertical" />
-                </Button>
-
-                <Button
-                    x:Name="btnFastRealPing"
-                    Width="30"
-                    Height="30"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuFastRealPing}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="LightningBolt" />
-                </Button>
-                <Button
-                    x:Name="menuMixedTestServer"
-                    Width="30"
-                    Height="30"
-                    Margin="{StaticResource MarginLeftRight4}"
-                    Style="{StaticResource MaterialDesignFloatingActionMiniLightButton}"
-                    ToolTip="{x:Static resx:ResUI.menuMixedTestServer}">
-                    <materialDesign:PackIcon VerticalAlignment="Center" Kind="Speedometer" />
-                </Button>
-            </WrapPanel>
+                    <ListBox
+                        x:Name="lstGroup"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        AutomationProperties.Name="{x:Static resx:ResUI.menuSubscription}"
+                        FontSize="{DynamicResource StdFontSize}"
+                        ItemContainerStyle="{StaticResource MyChipListBoxItem}"
+                        Style="{StaticResource MaterialDesignChoiceChipPrimaryOutlineListBox}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Remarks}" ToolTip="{Binding Remarks}" />
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </Border>
             <DataGrid
                 x:Name="lstProfiles"
                 materialDesign:DataGridAssist.CellPadding="2,2"

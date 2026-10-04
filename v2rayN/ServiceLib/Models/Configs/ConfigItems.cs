@@ -113,6 +113,12 @@ public class ConstItem
     public string? GeoSourceUrl { get; set; }
     public string? SrsSourceUrl { get; set; }
     public string? RouteRulesTemplateSourceUrl { get; set; }
+
+    /// <summary>
+    /// Static device id sent as the "x-hwid" header when updating subscriptions
+    /// (analog of the Android fork's hardcoded Happ HWID). Empty = don't send it.
+    /// </summary>
+    public string? Hwid { get; set; } = "8f42b9a1c3d7e056";
 }
 
 [Serializable]

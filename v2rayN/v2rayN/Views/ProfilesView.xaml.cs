@@ -15,7 +15,6 @@ public partial class ProfilesView
     public ProfilesView()
     {
         InitializeComponent();
-        lstGroup.MaxHeight = Math.Floor(SystemParameters.WorkArea.Height * 0.20 / 40) * 40;
 
         _config = AppManager.Instance.Config;
 

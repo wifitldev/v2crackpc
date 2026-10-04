@@ -72,6 +72,34 @@ else {
 }
 if (-not $ok) { throw 'xray core is missing - aborting' }
 
+# ---------------------------------------------------------------- 2b. sanitize
+# The app recreates these next to the exe, so running the published build once
+# (for a smoke test) drops the local subscriptions, the database and the logs
+# into the package. They are created again on first start - never ship them.
+Write-Host '== sanitize ==' -ForegroundColor Cyan
+
+$localNames = 'guiConfigs', 'guiLogs', 'binConfigs'
+$localFiles = 'guiNConfig.json', 'guiNDB.db', 'guiNDB.db-shm', 'guiNDB.db-wal'
+$removed    = 0
+
+foreach ($name in $localNames) {
+    $path = Join-Path $pubDir $name
+    if (Test-Path $path) {
+        Remove-Item $path -Recurse -Force
+        Write-Host "  rm -rf $name"
+        $removed++
+    }
+}
+
+Get-ChildItem $pubDir -Recurse -File | Where-Object {
+    $localFiles -contains $_.Name -or $_.Extension -eq '.log'
+} | ForEach-Object {
+    Remove-Item $_.FullName -Force
+    Write-Host ("  rm     " + $_.FullName.Substring($pubDir.Length + 1))
+    $removed++
+}
+Write-Host "  removed $removed local item(s)"
+
 # --------------------------------------------------------------------- 3. zip
 Write-Host '== zip ==' -ForegroundColor Cyan
 New-Item -ItemType Directory -Force -Path $dist | Out-Null

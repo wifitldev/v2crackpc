@@ -1065,6 +1065,12 @@
   <data name="menuAddHysteria2Server" xml:space="preserve">
     <value>Добавить сервер [Hysteria2]</value>
   </data>
+  <data name="TbSettingsHwid" xml:space="preserve">
+    <value>HWID (ID устройства для подписок)</value>
+  </data>
+  <data name="TbSettingsHwidTip" xml:space="preserve">
+    <value>Отправляется как x-hwid. Пусто = не отправлять</value>
+  </data>
   <data name="TbSettingsHysteriaBandwidth" xml:space="preserve">
     <value>Максимальная пропускная способность Hysteria (отдача/загрузка)</value>
   </data>
