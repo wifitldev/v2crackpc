@@ -92,6 +92,9 @@ public partial class OptionSettingWindow
             this.Bind(ViewModel, vm => vm.FragmentLengths, v => v.txtFragmentLengths.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.FragmentDelays, v => v.txtFragmentDelays.Text).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.FragmentMaxSplit, v => v.txtFragmentMaxSplit.Text).DisposeWith(disposables);
+            this.Bind(ViewModel, vm => vm.EnableDpiBypass, v => v.togenableDpiBypass.IsChecked).DisposeWith(disposables);
+            this.Bind(ViewModel, vm => vm.DpiBypassAvailable, v => v.togenableDpiBypass.IsEnabled).DisposeWith(disposables);
+            this.OneWayBind(ViewModel, vm => vm.DpiBypassStatus, v => v.txtDpiBypassStatus.Text).DisposeWith(disposables);
 
             this.Bind(ViewModel, vm => vm.AutoRun, v => v.togAutoRun.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.EnableStatistics, v => v.togEnableStatistics.IsChecked).DisposeWith(disposables);

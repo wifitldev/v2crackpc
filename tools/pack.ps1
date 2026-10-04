@@ -72,6 +72,12 @@ else {
 }
 if (-not $ok) { throw 'xray core is missing - aborting' }
 
+# byedpi (обход DPI) опционален: без него тумблер в настройках вежливо отключится
+New-Item -ItemType Directory -Force -Path (Join-Path $bin 'dpi') | Out-Null
+if (-not (Copy-Required (Join-Path $root 'tools\dpi\ciadpi.exe') (Join-Path $bin 'dpi\ciadpi.exe'))) {
+    Write-Warning 'byedpi not found - the DPI bypass toggle will be disabled'
+}
+
 # ---------------------------------------------------------------- 2b. sanitize
 # The app recreates these next to the exe, so running the published build once
 # (for a smoke test) drops the local subscriptions, the database and the logs

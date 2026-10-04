@@ -19,6 +19,9 @@ public class CoreBasicItem
 
     public bool EnableFinalFragment { get; set; }
 
+    /// <summary>Прогонять соединения ядра через локальный byedpi (bin\dpi\ciadpi.exe).</summary>
+    public bool EnableDpiBypass { get; set; }
+
     public bool EnableCacheFile4Sbox { get; set; } = true;
 }
 

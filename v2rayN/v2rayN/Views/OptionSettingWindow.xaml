@@ -84,7 +84,8 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+</Grid.RowDefinitions>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="Auto" />
@@ -621,6 +622,34 @@
                                 </Grid>
                             </StackPanel>
                         </materialDesign:PopupBox>
+
+                        <TextBlock
+                            Grid.Row="25"
+                            Grid.Column="0"
+                            Margin="{StaticResource Margin8}"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource ToolbarTextBlock}"
+                            Text="{x:Static resx:ResUI.TbSettingsEnableDpiBypass}" />
+                        <ToggleButton
+                            x:Name="togenableDpiBypass"
+                            Grid.Row="25"
+                            Grid.Column="1"
+                            Margin="{StaticResource Margin8}"
+                            HorizontalAlignment="Left" />
+                        <StackPanel
+                            Grid.Row="25"
+                            Grid.Column="2"
+                            Margin="{StaticResource Margin8}"
+                            VerticalAlignment="Center">
+                            <TextBlock
+                                Style="{StaticResource ToolbarTextBlock}"
+                                Text="{x:Static resx:ResUI.TbSettingsDpiBypassTip}"
+                                TextWrapping="Wrap" />
+                            <TextBlock
+                                x:Name="txtDpiBypassStatus"
+                                Style="{StaticResource ToolbarTextBlock}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
                     </Grid>
                 </ScrollViewer>
             </TabItem>

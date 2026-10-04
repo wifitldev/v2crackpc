@@ -142,6 +142,42 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 off 的本地化字符串。
+        /// </summary>
+        public static string DpiBypassStatusDisabled {
+            get {
+                return ResourceManager.GetString("DpiBypassStatusDisabled", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 failed to start 的本地化字符串。
+        /// </summary>
+        public static string DpiBypassStatusFailed {
+            get {
+                return ResourceManager.GetString("DpiBypassStatusFailed", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 bin\dpi\ciadpi.exe not found 的本地化字符串。
+        /// </summary>
+        public static string DpiBypassStatusMissing {
+            get {
+                return ResourceManager.GetString("DpiBypassStatusMissing", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 running, port {0} 的本地化字符串。
+        /// </summary>
+        public static string DpiBypassStatusRunning {
+            get {
+                return ResourceManager.GetString("DpiBypassStatusRunning", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   查找类似 Downloading... 的本地化字符串。
         /// </summary>
         public static string Downloading {
@@ -4299,6 +4335,24 @@ namespace ServiceLib.Resx {
         public static string TbSettingsEnableCheckPreReleaseUpdate {
             get {
                 return ResourceManager.GetString("TbSettingsEnableCheckPreReleaseUpdate", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 Routes the core's outgoing connections through a local byedpi proxy (bin\dpi\ciadpi.exe) so that DPI cannot rebuild the SNI and block the connection. Does not touch the system proxy or the registry, no admin rights needed. 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsDpiBypassTip {
+            get {
+                return ResourceManager.GetString("TbSettingsDpiBypassTip", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   查找类似 DPI bypass (byedpi) 的本地化字符串。
+        /// </summary>
+        public static string TbSettingsEnableDpiBypass {
+            get {
+                return ResourceManager.GetString("TbSettingsEnableDpiBypass", resourceCulture);
             }
         }
         

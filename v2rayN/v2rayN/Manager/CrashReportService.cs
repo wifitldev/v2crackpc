@@ -1,39 +1,56 @@
-using System.Net.Security;
-using System.Net.Sockets;
-using System.Security.Cryptography;
-using System.Text;
+using System.IO.Compression;
+using System.Net.Http;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace v2rayN.Manager;
 
 /// <summary>
-///     Sends a crash report to the support mailbox.
-///     SMTP credentials are stored encrypted (AES-256-CBC, key derived via PBKDF2)
-///     so they never appear in the binary as plain text.
-///     A cooldown file prevents the mailbox from being flooded when the app
-///     crashes over and over in a loop.
+///     Sends a crash report to the support endpoint over HTTPS.
+///     Nothing secret is baked into the binary: /crash accepts anonymous
+///     reports, the read token never leaves the server side.
+///
+///     Rules for this class:
+///       * never throw — a failure to report a crash must not cause a second crash;
+///       * never hang — a fixed 10 s network budget for the whole attempt, retry included;
+///       * never mail, never upload the config file (it holds subscription URLs);
+///       * the same crash is not re-sent more often than <see cref="Cooldown"/>.
 /// </summary>
 public static class CrashReportService
 {
-    private const string SmtpHost = "mail.unionium.org";
-    // 25 is the only port this server answers on (587/465 accept the connection
-    // and then never send a banner), and it advertises STARTTLS + AUTH PLAIN.
-    private const int SmtpPort = 25;
-    private const string SmtpUserPassBlob =
-        "fmga7W0Mr2qic9C94uE4UHIby7Hy8bQ818J/pC4EJPXil2VL2rOfk4MQtJinsWUT7tFcx1FujyaxvZa/DCykBQ==";
-    private const string SmtpSalt = "cujRHcAqDBRX5zNlpaDfbA==";
-    private const string KeyPass = "v2crackN-unionium-crash";
-    private const string MailTo = "bugreport-pc@unionium.org";
+    /// <summary>The only transport: HTTPS. No SMTP fallback, no other host.</summary>
+    private const string Endpoint = "https://bug.teodortech.ru/crash";
 
+    private const string AppId = "v2crackN";
+
+    /// <summary>Fallback device id, matches ConstItem.Hwid.</summary>
+    private const string FallbackHwid = "8f42b9a1c3d7e056";
+
+    /// <summary>Network budget for the whole report, retry included.</summary>
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>First try plus one retry; the second one only gets the time that is left.</summary>
+    private const int MaxAttempts = 2;
+
+    /// <summary>Same crash again — not sooner than this.</summary>
     private static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(10);
-    private static readonly string CooldownFile = Path.Combine(Path.GetTempPath(), "v2crackN.crashreport.lock");
-    private static int _sending;
 
-    /// <summary>Network timeouts in ms - a dying process must not hang here.</summary>
-    private const int TimeoutMs = 15000;
+    /// <summary>Field limits mirror the server's <c>fields</c> section.</summary>
+    private const int MaxMsg = 8192;
+    private const int MaxStack = 64 * 1024;
+    private const int MaxExtra = 64 * 1024;
+    private const int MaxOs = 256;
+    private const int MaxHw = 1024;
+    private const int MaxCfg = 64 * 1024;
+    private const int MaxAttachment = 512 * 1024;
+
+    private static int _sending;
+    private static HttpClient? _client;
 
     /// <summary>
-    ///     Builds and sends the report. Never throws: a failure to send a crash
-    ///     report must not turn into a second crash.
+    ///     Builds and sends the report. Never throws, never blocks the UI
+    ///     for longer than <see cref="RequestTimeout"/>.
     /// </summary>
     /// <param name="source">Which handler caught it (dispatcher / appdomain / task)</param>
     /// <param name="ex">Caught exception, may be null for non-exception fatal events</param>
@@ -48,15 +65,17 @@ public static class CrashReportService
 
             try
             {
-                if (!IsCooldownExpired())
+                var basis = BuildBasis(source, ex);
+                if (!IsCooldownExpired(basis))
                 {
                     return;
                 }
 
                 // Mark the attempt BEFORE sending, so a crash during send does not loop.
-                File.WriteAllText(CooldownFile, DateTime.Now.ToString("O"));
+                WriteCooldown(basis);
 
-                Send(BuildSubject(source, ex), BuildBody(source, ex));
+                var payload = BuildPayload(source, ex);
+                Send(payload);
             }
             finally
             {
@@ -69,72 +88,247 @@ public static class CrashReportService
         }
     }
 
-    private static bool IsCooldownExpired()
+    #region payload
+
+    private static CrashPayload BuildPayload(string source, Exception? ex)
+    {
+        var stack = ex?.ToString() ?? string.Empty;
+
+        return new CrashPayload
+        {
+            Ver = Utils.GetVersionInfo(),
+            Kind = MapKind(source),
+            App = AppId,
+            Platform = "windows",
+            Msg = BuildMessage(ex),
+            Stack = stack,
+            Hwid = ReadHwid(),
+            Os = BuildOs(),
+            Hw = BuildHardware(),
+            Cfg = BuildConfig(),
+            Extra = BuildExtra(),
+            Files = BuildFiles(),
+        };
+    }
+
+    /// <summary>
+    ///     Maps the handler that fired to the report type shown in the panel.
+    ///     The server keeps whatever string it gets (≤64 chars), so the mapping
+    ///     is ours to own.
+    /// </summary>
+    private static string MapKind(string source)
+    {
+        return source switch
+        {
+            // the dispatcher caught it and the app keeps running
+            "DispatcherUnhandledException" => "handled",
+            // observed too late, the app keeps running
+            "UnobservedTaskException" => "task",
+            // process is about to die
+            "AppDomainUnhandledException" => "unhandled",
+            _ => "unhandled",
+        };
+    }
+
+    private static string BuildMessage(Exception? ex)
+    {
+        if (ex == null)
+        {
+            return "Fatal crash without an exception object";
+        }
+
+        var msg = ex.GetType().Name;
+        if (!string.IsNullOrEmpty(ex.Message))
+        {
+            msg += ": " + ex.Message.Split('\r', '\n')[0];
+        }
+        return msg;
+    }
+
+    /// <summary>Windows version + build + runtime + arch, cut to the server's limit.</summary>
+    private static string BuildOs()
     {
         try
         {
-            if (!File.Exists(CooldownFile))
-            {
-                return true;
-            }
+            const string key = @"SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+            var product = ReadRegValue(key, "ProductName")
+                          ?? Environment.OSVersion.VersionString;
+            var display = ReadRegValue(key, "DisplayVersion") ?? string.Empty;
+            var build = ReadRegValue(key, "CurrentBuildNumber")
+                        ?? Environment.OSVersion.Version.Build.ToString();
 
-            var last = File.ReadAllText(CooldownFile).Trim();
-            if (!DateTime.TryParse(last, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var when))
-            {
-                return true;
-            }
-
-            return DateTime.Now - when >= Cooldown;
+            var os = $"{product} {display} build {build}".Trim();
+            os = string.Join(' ', os.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            os += " | " + RuntimeInformation.FrameworkDescription;
+            os += " | " + RuntimeInformation.ProcessArchitecture;
+            return Cut(os, MaxOs);
         }
         catch
         {
-            return true;
+            return Cut(Environment.OSVersion.ToString(), MaxOs);
         }
     }
 
-    private static string BuildSubject(string source, Exception? ex)
+    /// <summary>CPU model, core count and total RAM.</summary>
+    private static string BuildHardware()
     {
-        var kind = ex?.GetType().Name ?? "Fatal";
-        return $"[v2crackN {Utils.GetVersionInfo()}] Crash ({source}): {kind}";
+        try
+        {
+            const string cpuKey = @"HARDWARE\DESCRIPTION\System\CentralProcessor\0";
+            var cpu = ReadRegValue(cpuKey, "ProcessorNameString");
+            cpu = string.IsNullOrWhiteSpace(cpu) ? "unknown CPU" : cpu.Trim();
+
+            var cores = Environment.ProcessorCount;
+            var ram = ReadTotalMemoryGb();
+            var ramText = ram == "?" ? "RAM unknown" : $"{ram} GB RAM";
+
+            return Cut($"{cpu} | {cores} logical cores | {ramText}", MaxHw);
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 
-    private static string BuildBody(string source, Exception? ex)
+    private static string ReadTotalMemoryGb()
+    {
+        try
+        {
+            var status = new MemoryStatusEx();
+            if (GlobalMemoryStatusEx(ref status) && status.ullTotalPhys > 0)
+            {
+                var gb = status.ullTotalPhys / (1024d * 1024d * 1024d);
+                return gb.ToString("0.#", CultureInfo.InvariantCulture);
+            }
+        }
+        catch
+        {
+            // fall through
+        }
+        return "?";
+    }
+
+    /// <summary>
+    ///     The user's configuration as the support needs to see it: which core
+    ///     is running, which local ports, is TUN on, is the system proxy forced,
+    ///     is fragmentation enabled. Never the config file itself - it carries
+    ///     subscription URLs.
+    /// </summary>
+    private static string BuildConfig()
+    {
+        try
+        {
+            var app = AppManager.Instance;
+            var cfg = app?.Config;
+            if (cfg == null)
+            {
+                return "config=<not loaded>";
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("core=").Append(app.RunningCoreType);
+
+            // The core serves SOCKS and HTTP (mixed) on ONE port: that port is
+            // what GetLocalPort(socks) returns. Adding the enum offset to
+            // EInboundProtocol.mixed would invent a port nobody listens on.
+            var first = cfg.Inbound?.FirstOrDefault();
+            sb.Append(" inbound=127.0.0.1:").Append(SafePort(() => app.GetLocalPort(EInboundProtocol.socks)));
+            if (first?.SecondLocalPortEnabled == true)
+            {
+                sb.Append(",127.0.0.1:").Append(SafePort(() => app.GetLocalPort(EInboundProtocol.socks2)));
+            }
+            if (first?.AllowLANConn == true)
+            {
+                var lan = first.NewPort4LAN ? EInboundProtocol.socks3 : EInboundProtocol.socks;
+                sb.Append(" lan=127.0.0.1:").Append(SafePort(() => app.GetLocalPort(lan)));
+            }
+
+            sb.Append(" sysProxy=").Append(cfg.SystemProxyItem?.SysProxyType ?? ESysProxyType.ForcedClear);
+            sb.Append(" tun=").Append(cfg.TunModeItem?.EnableTun == true ? "on" : "off");
+            sb.Append(" fragment=").Append(cfg.CoreBasicItem?.EnableFragment == true ? "on" : "off");
+            sb.Append(" routing=").Append(cfg.RoutingBasicItem?.DomainStrategy ?? "-");
+            sb.Append(" log=").Append(cfg.GuiItem?.EnableLog == true ? "on" : "off");
+            sb.Append(" lang=").Append(cfg.UiItem?.CurrentLanguage ?? "-");
+            sb.Append(" exe=").Append(Utils.GetExePath());
+
+            return Cut(sb.ToString(), MaxCfg);
+        }
+        catch
+        {
+            return "config=<unavailable>";
+        }
+    }
+
+    private static string SafePort(Func<int> getter)
+    {
+        try
+        {
+            return getter().ToString();
+        }
+        catch
+        {
+            return "-";
+        }
+    }
+
+    /// <summary>Report header plus the tail of today's log.</summary>
+    private static string BuildExtra()
     {
         var sb = new StringBuilder();
-        sb.AppendLine("v2crackN crash report");
-        sb.AppendLine($"Time:     {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        sb.AppendLine($"Source:   {source}");
-        sb.AppendLine($"Version:  {Utils.GetVersionInfo()}");
-        sb.AppendLine($"Runtime:  {Utils.GetVersion()}");
-        sb.AppendLine($"OS:       {Environment.OSVersion}");
-        sb.AppendLine($"Arch:     {System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture}");
-        sb.AppendLine($"Exe:      {Utils.GetExePath()}");
+        sb.AppendLine($"v2crackN crash report | {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        sb.AppendLine($"version: {Utils.GetVersionInfo()} | runtime: {Utils.GetVersion()}");
+        sb.AppendLine($"exe:     {Utils.GetExePath()}");
+        sb.AppendLine($"time:    {DateTime.Now:o}");
         sb.AppendLine();
-
-        if (ex != null)
-        {
-            sb.AppendLine("=== Exception ===");
-            sb.AppendLine(ex.ToString());
-            if (ex.InnerException != null)
-            {
-                sb.AppendLine("--- Inner ---");
-                sb.AppendLine(ex.InnerException.ToString());
-            }
-            sb.AppendLine();
-        }
 
         var tail = ReadLogTail(Utils.GetLogPath($"{DateTime.Now:yyyy-MM-dd}.txt"));
         if (tail.IsNotEmpty())
         {
-            sb.AppendLine("=== Log tail ===");
+            sb.AppendLine("=== log tail ===");
             sb.AppendLine(tail);
         }
 
-        return sb.ToString();
+        return Cut(sb.ToString(), MaxExtra);
     }
 
     /// <summary>
-    ///     Last ~64 KB of today's log, so the report stays within sane mail limits.
+    ///     Today's log as an attachment when it is small enough.
+    ///     The config file is deliberately never attached: it carries
+    ///     subscription URLs and the user's server list.
+    /// </summary>
+    private static List<CrashFile>? BuildFiles()
+    {
+        try
+        {
+            var path = Utils.GetLogPath($"{DateTime.Now:yyyy-MM-dd}.txt");
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var info = new FileInfo(path);
+            if (info.Length is 0 or > MaxAttachment)
+            {
+                return null;
+            }
+
+            return
+            [
+                new CrashFile
+                {
+                    Name = info.Name,
+                    Data = Convert.ToBase64String(File.ReadAllBytes(path)),
+                },
+            ];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Last ~64 KB of today's log, so the report stays within sane limits.
     /// </summary>
     private static string ReadLogTail(string path)
     {
@@ -168,211 +362,269 @@ public static class CrashReportService
         }
     }
 
-    /// <summary>
-    ///     Delivers the report with a raw SMTP dialogue over STARTTLS.
-    ///     System.Net.Mail.SmtpClient is not used: this server answers
-    ///     "I'M NOT RELAY!!" to it, while the very same dialogue written
-    ///     by hand is accepted - and the crash path must not depend on
-    ///     a picky framework client.
-    /// </summary>
-    private static void Send(string subject, string body)
+    private static string Cut(string value, int max)
     {
-        var creds = DecodeCredentials();
-        if (creds == null)
+        return value.Length <= max ? value : value[..max];
+    }
+
+    private static string ReadHwid()
+    {
+        try
+        {
+            var hwid = AppManager.Instance?.Config?.ConstItem?.Hwid?.Trim();
+            return !string.IsNullOrWhiteSpace(hwid) ? Cut(hwid!, 64) : FallbackHwid;
+        }
+        catch
+        {
+            return FallbackHwid;
+        }
+    }
+
+    /// <summary>Reads one string value from HKLM; 64-bit view on a 64-bit OS.</summary>
+    private static string? ReadRegValue(string keyPath, string name)
+    {
+        using var baseKey = Microsoft.Win32.RegistryKey.OpenBaseKey(
+            Microsoft.Win32.RegistryHive.LocalMachine, Microsoft.Win32.RegistryView.Registry64);
+        using var key = baseKey.OpenSubKey(keyPath);
+        return key?.GetValue(name) as string;
+    }
+
+    #endregion payload
+
+    #region cooldown
+
+    /// <summary>
+    ///     Fingerprint of "what crashed" - kind + message + first 4000 chars of
+    ///     the stack, exactly what the server hashes for deduplication. Two
+    ///     different crashes can therefore go out inside the same minute.
+    /// </summary>
+    private static string BuildBasis(string source, Exception? ex)
+    {
+        var basis = MapKind(source) + "\n" + BuildMessage(ex) + "\n" + (ex?.ToString() ?? string.Empty);
+        return Utils.GetMd5(basis);
+    }
+
+    private static string CooldownFile(string basis)
+    {
+        return Path.Combine(Path.GetTempPath(), "v2crackN.crashreport." + basis + ".lock");
+    }
+
+    private static bool IsCooldownExpired(string basis)
+    {
+        try
+        {
+            var file = CooldownFile(basis);
+            if (!File.Exists(file))
+            {
+                return true;
+            }
+
+            var last = File.ReadAllText(file).Trim();
+            if (!DateTime.TryParse(last, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var when))
+            {
+                return true;
+            }
+
+            return DateTime.Now - when >= Cooldown;
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    private static void WriteCooldown(string basis)
+    {
+        try
+        {
+            File.WriteAllText(CooldownFile(basis), DateTime.Now.ToString("O"));
+        }
+        catch
+        {
+            // a leftover lock file is harmless
+        }
+    }
+
+    #endregion cooldown
+
+    #region transport
+
+    /// <summary>
+    ///     One gzip'd JSON body, up to two attempts inside a fixed time budget.
+    ///     413/429/400 are the server saying "enough" - that is a normal outcome,
+    ///     not an error, and it stops the retries.
+    /// </summary>
+    private static void Send(CrashPayload payload)
+    {
+        byte[] body;
+        try
+        {
+            body = Compress(JsonSerializer.Serialize(payload, SerializerOptions));
+        }
+        catch
         {
             return;
         }
 
-        var (from, password) = creds.Value;
-
-        using var tcp = new TcpClient();
-        if (!tcp.ConnectAsync(SmtpHost, SmtpPort).Wait(TimeoutMs))
+        var client = GetClient();
+        if (client == null)
         {
-            throw new IOException($"SMTP connect to {SmtpHost}:{SmtpPort} timed out");
+            return;
         }
-        tcp.ReceiveTimeout = TimeoutMs;
-        tcp.SendTimeout = TimeoutMs;
 
-        Stream stream = tcp.GetStream();
-        SslStream? ssl = null;
-
-        try
+        var watch = Stopwatch.StartNew();
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
-            Expect(ReadReply(stream), "220", "banner");
+            var remaining = RequestTimeout - watch.Elapsed;
+            if (remaining < TimeSpan.FromMilliseconds(500))
+            {
+                return;
+            }
 
-            WriteLine(stream, "EHLO v2crackN.local");
-            Expect(ReadReply(stream), "250", "EHLO");
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
+                {
+                    Content = new ByteArrayContent(body),
+                };
+                request.Content.Headers.ContentType = new("application/json");
+                request.Content.Headers.ContentEncoding.Add("gzip");
 
-            WriteLine(stream, "STARTTLS");
-            Expect(ReadReply(stream), "220", "STARTTLS");
+                using var cts = new CancellationTokenSource(remaining);
+                using var response = client.Send(request, cts.Token);
+                var code = (int)response.StatusCode;
 
-            ssl = new SslStream(stream, leaveInnerStreamOpen: false);
-            ssl.AuthenticateAsClient(SmtpHost);
-            stream = ssl;
+                if (code == 202)
+                {
+                    Log($"crash report accepted ({body.Length} bytes gzipped)");
+                    return;
+                }
 
-            WriteLine(stream, "EHLO v2crackN.local");
-            Expect(ReadReply(stream), "250", "EHLO after TLS");
-
-            // AUTH PLAIN: base64( NUL user NUL password )
-            var token = Convert.ToBase64String(Encoding.UTF8.GetBytes("\0" + from + "\0" + password));
-            WriteLine(stream, "AUTH PLAIN " + token);
-            Expect(ReadReply(stream), "235", "AUTH");
-
-            WriteLine(stream, "MAIL FROM:<" + from + ">");
-            Expect(ReadReply(stream), "250", "MAIL FROM");
-
-            WriteLine(stream, "RCPT TO:<" + MailTo + ">");
-            Expect(ReadReply(stream), "250", "RCPT TO");
-
-            WriteLine(stream, "DATA");
-            Expect(ReadReply(stream), "354", "DATA");
-
-            var message = BuildMessage(from, subject, body);
-            var bytes = Encoding.UTF8.GetBytes(message);
-            stream.Write(bytes, 0, bytes.Length);
-            stream.Flush();
-            Expect(ReadReply(stream), "250", "end of data");
-
-            WriteLine(stream, "QUIT");
-        }
-        finally
-        {
-            ssl?.Dispose();
+                if (code is 400 or 413 or 429 or 431)
+                {
+                    // rejected / too large / rate limited - nothing to retry
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"crash report attempt {attempt} failed: {ex.Message}");
+            }
         }
     }
 
     /// <summary>
-    ///     RFC 5321 message: ASCII headers plus a base64 body, so no encoding,
-    ///     dot-stuffing or 8-bit surprise can get the server to drop it.
+    ///     Logging must never influence the report itself: a failure here would
+    ///     either swallow the "accepted" answer and re-send, or throw upward.
     /// </summary>
-    private static string BuildMessage(string from, string subject, string body)
-    {
-        var sb = new StringBuilder();
-        sb.Append("From: v2crackN <").Append(from).Append(">\r\n");
-        sb.Append("To: <").Append(MailTo).Append(">\r\n");
-        sb.Append("Subject: ").Append(EncodeHeader(subject)).Append("\r\n");
-        sb.Append("Date: ").Append(DateTime.Now.ToString("r", CultureInfo.InvariantCulture)).Append("\r\n");
-        sb.Append("Message-ID: <").Append(Guid.NewGuid().ToString("N")).Append("@unionium.org>\r\n");
-        sb.Append("MIME-Version: 1.0\r\n");
-        sb.Append("Content-Type: text/plain; charset=utf-8\r\n");
-        sb.Append("Content-Transfer-Encoding: base64\r\n");
-        sb.Append("\r\n");
-
-        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(body));
-        for (var i = 0; i < b64.Length; i += 76)
-        {
-            sb.Append(b64, i, Math.Min(76, b64.Length - i)).Append("\r\n");
-        }
-
-        sb.Append(".\r\n");
-        return sb.ToString();
-    }
-
-    /// <summary>Encodes a header as an encoded-word when it is not pure ASCII.</summary>
-    private static string EncodeHeader(string value)
-    {
-        foreach (var c in value)
-        {
-            if (c > 127)
-            {
-                return "=?UTF-8?B?" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value)) + "?=";
-            }
-        }
-        return value;
-    }
-
-    private static void WriteLine(Stream stream, string line)
-    {
-        var bytes = Encoding.ASCII.GetBytes(line + "\r\n");
-        stream.Write(bytes, 0, bytes.Length);
-        stream.Flush();
-    }
-
-    /// <summary>Reads a (possibly multi-line) SMTP reply and returns its last line.</summary>
-    private static string ReadReply(Stream stream)
-    {
-        var last = string.Empty;
-        while (true)
-        {
-            var line = ReadLine(stream);
-            if (line.Length == 0)
-            {
-                continue;
-            }
-            last = line;
-            // "250 text" ends the reply, "250-more" continues it
-            if (line.Length < 4 || line[3] != '-')
-            {
-                return last;
-            }
-        }
-    }
-
-    private static string ReadLine(Stream stream)
-    {
-        var sb = new StringBuilder();
-        var one = new byte[1];
-        while (true)
-        {
-            var n = stream.Read(one, 0, 1);
-            if (n <= 0)
-            {
-                break;
-            }
-            var c = (char)one[0];
-            if (c == '\n')
-            {
-                break;
-            }
-            if (c != '\r')
-            {
-                sb.Append(c);
-            }
-        }
-        return sb.ToString();
-    }
-
-    private static void Expect(string reply, string code, string what)
-    {
-        if (!reply.StartsWith(code + " ", StringComparison.Ordinal) && reply != code)
-        {
-            throw new IOException($"SMTP {what} failed, expected {code}, got: {reply}");
-        }
-    }
-
-    /// <summary>
-    ///     "login|password" or null when the payload cannot be decoded.
-    /// </summary>
-    private static (string login, string password)? DecodeCredentials()
+    private static void Log(string message)
     {
         try
         {
-            var blob = Convert.FromBase64String(SmtpUserPassBlob);
-            var salt = Convert.FromBase64String(SmtpSalt);
+            Logging.SaveLog(message);
+        }
+        catch
+        {
+            // the report outcome does not depend on the log
+        }
+    }
 
-            var key = Rfc2898DeriveBytes.Pbkdf2(KeyPass, salt, 100000, HashAlgorithmName.SHA256, 32);
+    private static HttpClient? GetClient()
+    {
+        if (_client != null)
+        {
+            return _client;
+        }
 
-            using var aes = Aes.Create();
-            aes.Key = key;
-            aes.Mode = CipherMode.CBC;
-            aes.Padding = PaddingMode.PKCS7;
-            aes.IV = blob.Take(16).ToArray();
-
-            using var decryptor = aes.CreateDecryptor();
-            var plain = decryptor.TransformFinalBlock(blob, 16, blob.Length - 16);
-            var text = Encoding.UTF8.GetString(plain);
-
-            var sep = text.IndexOf('|');
-            if (sep <= 0 || sep == text.Length - 1)
+        try
+        {
+            // Direct connection on purpose: the report must not depend on the
+            // system proxy the app may have set (or on a dead local core).
+            var handler = new HttpClientHandler
             {
-                return null;
-            }
+                UseProxy = false,
+                UseDefaultCredentials = false,
+            };
 
-            return (text[..sep], text[(sep + 1)..]);
+            var client = new HttpClient(handler)
+            {
+                Timeout = RequestTimeout,
+            };
+            client.DefaultRequestHeaders.UserAgent.ParseAdd($"{AppId}/{Utils.GetVersionInfo()}");
+            _client = client;
+            return client;
         }
         catch
         {
             return null;
         }
     }
+
+    private static readonly JsonSerializerOptions SerializerOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private static byte[] Compress(string json)
+    {
+        var raw = Encoding.UTF8.GetBytes(json);
+        using var ms = new MemoryStream();
+        using (var gz = new GZipStream(ms, CompressionLevel.Fastest, leaveOpen: true))
+        {
+            gz.Write(raw, 0, raw.Length);
+        }
+        return ms.ToArray();
+    }
+
+    #endregion transport
+
+    #region wire format
+
+    private sealed class CrashPayload
+    {
+        [JsonPropertyName("ver")] public string Ver { get; set; } = "";
+        [JsonPropertyName("kind")] public string Kind { get; set; } = "unhandled";
+        [JsonPropertyName("app")] public string App { get; set; } = AppId;
+        [JsonPropertyName("platform")] public string Platform { get; set; } = "windows";
+        [JsonPropertyName("msg")] public string Msg { get; set; } = "";
+        [JsonPropertyName("stack")] public string Stack { get; set; } = "";
+        [JsonPropertyName("hwid")] public string Hwid { get; set; } = FallbackHwid;
+        [JsonPropertyName("os")] public string Os { get; set; } = "";
+        [JsonPropertyName("hw")] public string Hw { get; set; } = "";
+        [JsonPropertyName("cfg")] public string Cfg { get; set; } = "";
+        [JsonPropertyName("extra")] public string Extra { get; set; } = "";
+        [JsonPropertyName("files")] public List<CrashFile>? Files { get; set; }
+    }
+
+    private sealed class CrashFile
+    {
+        [JsonPropertyName("name")] public string Name { get; set; } = "";
+        [JsonPropertyName("data")] public string Data { get; set; } = "";
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryStatusEx
+    {
+        public uint dwLength;
+        public uint dwMemoryLoad;
+        public ulong ullTotalPhys;
+        public ulong ullAvailPhys;
+        public ulong ullTotalPageFile;
+        public ulong ullAvailPageFile;
+        public ulong ullTotalVirtual;
+        public ulong ullAvailVirtual;
+        public ulong ullAvailExtendedVirtual;
+
+        public MemoryStatusEx()
+        {
+            dwLength = (uint)Marshal.SizeOf<MemoryStatusEx>();
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GlobalMemoryStatusEx(ref MemoryStatusEx lpBuffer);
+
+    #endregion wire format
 }

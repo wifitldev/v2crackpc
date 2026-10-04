@@ -71,6 +71,16 @@ public class CoreManager
         }
 
         var node = mainContext.Node;
+
+        // Обход DPI: ciadpi должен быть поднят ДО генерации конфига,
+        // иначе ShouldBypass ещё неизвестен и конфиг уйдёт без detour
+        await DpiBypassService.Instance.PrepareAsync(_config);
+        var dpiHandle = DpiBypassService.Instance.ProcessHandle;
+        if (dpiHandle != nint.Zero)
+        {
+            AddProcessJob(dpiHandle);
+        }
+
         var fileName = Utils.GetBinConfigPath(Global.CoreConfigFileName);
         var result = await CoreConfigHandler.GenerateClientConfig(mainContext, fileName);
         if (result.Success != true)
@@ -78,6 +88,7 @@ public class CoreManager
             await UpdateFunc(true, result.Msg);
             return;
         }
+        await ApplyDpiBypassAsync(mainContext, fileName);
 
         await UpdateFunc(false, $"{node.GetSummary()}");
         await UpdateFunc(false, $"{Utils.GetRuntimeInfo()}");
@@ -200,6 +211,7 @@ public class CoreManager
             var result = await CoreConfigHandler.GenerateClientConfig(preContext, fileName);
             if (result.Success)
             {
+                await ApplyDpiBypassAsync(preContext, fileName);
                 var coreInfo = CoreInfoManager.Instance.GetCoreInfo(preCoreType);
                 var proc = await RunProcess(coreInfo, Global.CorePreConfigFileName, true, true, preContext.IsTunEnabled);
                 if (proc is null)
@@ -214,6 +226,34 @@ public class CoreManager
     private async Task UpdateFunc(bool notify, string msg)
     {
         await _updateFunc?.Invoke(notify, msg);
+    }
+
+    /// <summary>
+    ///     Прогоняет сгенерированный конфиг через byedpi, пока обход работает.
+    ///     Если ciadpi не запустился или его убили — файл остаётся как есть,
+    ///     ядро выходит напрямую и трафик не уходит в никуда.
+    /// </summary>
+    private static async Task ApplyDpiBypassAsync(CoreConfigContext context, string fileName)
+    {
+        if (!DpiBypassService.Instance.ShouldBypass || context.Node.ConfigType == EConfigType.Custom)
+        {
+            return;
+        }
+
+        try
+        {
+            var content = await File.ReadAllTextAsync(fileName);
+            var patched = DpiBypassService.Instance.PatchConfig(context.RunCoreType, content);
+            if (!ReferenceEquals(patched, content))
+            {
+                await File.WriteAllTextAsync(fileName, patched);
+                Logging.SaveLog($"{_tag}: обход DPI применён, порт {DpiBypassService.Instance.Port}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logging.SaveLog(_tag, ex);
+        }
     }
 
     private static async Task WaitForProxyPort(CoreConfigContext? preContext)

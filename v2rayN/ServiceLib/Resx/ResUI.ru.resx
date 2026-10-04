@@ -1146,6 +1146,24 @@
   <data name="menuAddHttpServer" xml:space="preserve">
     <value>Добавить сервер [HTTP]</value>
   </data>
+  <data name="DpiBypassStatusDisabled" xml:space="preserve">
+    <value>выключен</value>
+  </data>
+  <data name="DpiBypassStatusFailed" xml:space="preserve">
+    <value>не запустился</value>
+  </data>
+  <data name="DpiBypassStatusMissing" xml:space="preserve">
+    <value>не найден bin\dpi\ciadpi.exe</value>
+  </data>
+  <data name="DpiBypassStatusRunning" xml:space="preserve">
+    <value>запущен, порт {0}</value>
+  </data>
+  <data name="TbSettingsDpiBypassTip" xml:space="preserve">
+    <value>Прогоняет исходящие соединения ядра через локальный byedpi (bin\dpi\ciadpi.exe), чтобы DPI не мог пересобрать SNI и заблокировать соединение. Системный прокси и реестр не трогаются, права администратора не нужны.</value>
+  </data>
+  <data name="TbSettingsEnableDpiBypass" xml:space="preserve">
+    <value>Обход DPI (byedpi)</value>
+  </data>
   <data name="TbSettingsEnableFragment" xml:space="preserve">
     <value>Включить фрагментацию (Fragment)</value>
   </data>

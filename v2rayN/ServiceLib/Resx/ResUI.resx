@@ -1149,6 +1149,24 @@
   <data name="menuAddHttpServer" xml:space="preserve">
     <value>Add [HTTP]</value>
   </data>
+  <data name="DpiBypassStatusDisabled" xml:space="preserve">
+    <value>off</value>
+  </data>
+  <data name="DpiBypassStatusFailed" xml:space="preserve">
+    <value>failed to start</value>
+  </data>
+  <data name="DpiBypassStatusMissing" xml:space="preserve">
+    <value>bin\dpi\ciadpi.exe not found</value>
+  </data>
+  <data name="DpiBypassStatusRunning" xml:space="preserve">
+    <value>running, port {0}</value>
+  </data>
+  <data name="TbSettingsDpiBypassTip" xml:space="preserve">
+    <value>Routes the core's outgoing connections through a local byedpi proxy (bin\dpi\ciadpi.exe) so that DPI cannot rebuild the SNI and block the connection. Does not touch the system proxy or the registry, no admin rights needed.</value>
+  </data>
+  <data name="TbSettingsEnableDpiBypass" xml:space="preserve">
+    <value>DPI bypass (byedpi)</value>
+  </data>
   <data name="TbSettingsEnableFragment" xml:space="preserve">
     <value>Enable fragment</value>
   </data>

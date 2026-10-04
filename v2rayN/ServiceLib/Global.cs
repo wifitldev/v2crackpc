@@ -109,6 +109,12 @@ public class Global
     public const string StreamSecurity = "tls";
     public const string StreamSecurityReality = "reality";
     public const string Loopback = "127.0.0.1";
+
+    // byedpi: локальный SOCKS, через который ядро выходит наружу (обход DPI)
+    public const string DpiBypassTag = "byedpi";
+    public const int DpiBypassPort = 10858;
+    public const string DpiBypassExe = "dpi/ciadpi.exe";
+
     public const string InboundAPIProtocol = "dokodemo-door";
     public const string HttpProtocol = "http://";
     public const string HttpsProtocol = "https://";

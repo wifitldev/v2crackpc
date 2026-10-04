@@ -35,6 +35,9 @@ public partial class OptionSettingViewModel : MyReactiveObject, ICloseable
     [Reactive] public partial string FragmentLengths { get; set; }
     [Reactive] public partial string FragmentDelays { get; set; }
     [Reactive] public partial string FragmentMaxSplit { get; set; }
+    [Reactive] public partial bool EnableDpiBypass { get; set; }
+    [Reactive] public partial bool DpiBypassAvailable { get; set; }
+    [Reactive] public partial string DpiBypassStatus { get; set; }
 
     #endregion Core
 
@@ -182,6 +185,9 @@ public partial class OptionSettingViewModel : MyReactiveObject, ICloseable
         FragmentLengths = Utils.List2String(_config.Fragment4RayItem?.Lengths);
         FragmentDelays = Utils.List2String(_config.Fragment4RayItem?.Delays);
         FragmentMaxSplit = _config.Fragment4RayItem?.MaxSplit;
+        EnableDpiBypass = _config.CoreBasicItem.EnableDpiBypass;
+        DpiBypassAvailable = DpiBypassService.Instance.BinaryExists;
+        DpiBypassStatus = DpiBypassService.Instance.StatusText;
 
         #endregion Core
 
@@ -360,6 +366,12 @@ public partial class OptionSettingViewModel : MyReactiveObject, ICloseable
         _config.HysteriaItem.UpMbps = HyUpMbps ?? 0;
         _config.HysteriaItem.DownMbps = HyDownMbps ?? 0;
         _config.CoreBasicItem.EnableFragment = EnableFragment;
+        if (EnableDpiBypass)
+        {
+            // обход явно включён — снимаем блокировку сессии после аварийного отключения
+            DpiBypassService.Instance.ResetSession();
+        }
+        _config.CoreBasicItem.EnableDpiBypass = EnableDpiBypass;
         _config.CoreBasicItem.EnableFinalFragment = EnableFinalFragment;
         _config.Fragment4RayItem ??= new();
         _config.Fragment4RayItem.Packets = FragmentPackets;

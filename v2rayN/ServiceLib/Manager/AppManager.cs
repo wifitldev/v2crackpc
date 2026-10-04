@@ -137,6 +137,7 @@ public sealed class AppManager
             await ProfileExManager.Instance.SaveTo();
             await StatisticsManager.Instance.SaveTo();
             await CoreManager.Instance.CoreStop();
+            DpiBypassService.Instance.Stop();
             StatisticsManager.Instance.Close();
 
             Logging.SaveLog("AppExitAsync End");

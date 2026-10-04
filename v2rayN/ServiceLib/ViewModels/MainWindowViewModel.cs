@@ -286,6 +286,8 @@ public partial class MainWindowViewModel : MyReactiveObject
             ProfilesViewModel.ReloadRequested.AsObservable(),
             StatusBarViewModel.ReloadRequested.AsObservable(),
             CheckUpdateViewModel.ReloadRequested.AsObservable(),
+            // byedpi упал и его не удалось поднять — пересобрать конфиг без обхода DPI
+            AppEvents.ReloadRequested.AsObservable(),
         };
 
         foreach (var reloadRequested in vmReloadRequestedList)

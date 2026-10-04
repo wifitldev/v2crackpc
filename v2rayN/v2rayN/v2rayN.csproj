@@ -44,4 +44,11 @@
 		<ProjectReference Include="..\ServiceLib\ServiceLib.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- byedpi: обход DPI, приложение ищет его в bin\dpi\ciadpi.exe рядом с exe -->
+		<Content Include="..\..\tools\dpi\ciadpi.exe" Link="bin\dpi\ciadpi.exe">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
+
 </Project>

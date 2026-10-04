@@ -17,6 +17,13 @@ public partial class MainWindow
     {
         InitializeComponent();
 
+        // Меню «Серверы» переехало из тулбара в контекстное меню вкладки
+        // «Серверы» (раскладка Tab). В раскладках Horizontal и Vertical такой
+        // вкладки нет, поэтому отдаём то же самое меню панелям профилей —
+        // иначе добавить сервер мышью было бы нечем.
+        tabProfiles.ContextMenu = tabProfiles2.ContextMenu;
+        tabProfiles1.ContextMenu = tabProfiles2.ContextMenu;
+
         _config = AppManager.Instance.Config;
         ThreadPool.RegisterWaitForSingleObject(App.ProgramStarted, OnProgramStarted, null, -1, false);
 
