@@ -1,5 +1,5 @@
-using System.Net;
-using System.Net.Mail;
+using System.Net.Security;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -15,7 +15,9 @@ namespace v2rayN.Manager;
 public static class CrashReportService
 {
     private const string SmtpHost = "mail.unionium.org";
-    private const int SmtpPort = 587;
+    // 25 is the only port this server answers on (587/465 accept the connection
+    // and then never send a banner), and it advertises STARTTLS + AUTH PLAIN.
+    private const int SmtpPort = 25;
     private const string SmtpUserPassBlob =
         "fmga7W0Mr2qic9C94uE4UHIby7Hy8bQ818J/pC4EJPXil2VL2rOfk4MQtJinsWUT7tFcx1FujyaxvZa/DCykBQ==";
     private const string SmtpSalt = "cujRHcAqDBRX5zNlpaDfbA==";
@@ -25,6 +27,9 @@ public static class CrashReportService
     private static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(10);
     private static readonly string CooldownFile = Path.Combine(Path.GetTempPath(), "v2crackN.crashreport.lock");
     private static int _sending;
+
+    /// <summary>Network timeouts in ms - a dying process must not hang here.</summary>
+    private const int TimeoutMs = 15000;
 
     /// <summary>
     ///     Builds and sends the report. Never throws: a failure to send a crash
@@ -163,6 +168,13 @@ public static class CrashReportService
         }
     }
 
+    /// <summary>
+    ///     Delivers the report with a raw SMTP dialogue over STARTTLS.
+    ///     System.Net.Mail.SmtpClient is not used: this server answers
+    ///     "I'M NOT RELAY!!" to it, while the very same dialogue written
+    ///     by hand is accepted - and the crash path must not depend on
+    ///     a picky framework client.
+    /// </summary>
     private static void Send(string subject, string body)
     {
         var creds = DecodeCredentials();
@@ -173,25 +185,159 @@ public static class CrashReportService
 
         var (from, password) = creds.Value;
 
-        using var client = new SmtpClient(SmtpHost, SmtpPort)
+        using var tcp = new TcpClient();
+        if (!tcp.ConnectAsync(SmtpHost, SmtpPort).Wait(TimeoutMs))
         {
-            EnableSsl = true, // STARTTLS
-            Credentials = new NetworkCredential(from, password),
-            Timeout = 15000, // ms, do not hang a dying process
-            DeliveryMethod = SmtpDeliveryMethod.Network,
-        };
+            throw new IOException($"SMTP connect to {SmtpHost}:{SmtpPort} timed out");
+        }
+        tcp.ReceiveTimeout = TimeoutMs;
+        tcp.SendTimeout = TimeoutMs;
 
-        using var msg = new MailMessage
+        Stream stream = tcp.GetStream();
+        SslStream? ssl = null;
+
+        try
         {
-            From = new MailAddress(from),
-            Subject = subject,
-            Body = body,
-            BodyEncoding = Encoding.UTF8,
-            SubjectEncoding = Encoding.UTF8,
-        };
-        msg.To.Add(MailTo);
+            Expect(ReadReply(stream), "220", "banner");
 
-        client.Send(msg);
+            WriteLine(stream, "EHLO v2crackN.local");
+            Expect(ReadReply(stream), "250", "EHLO");
+
+            WriteLine(stream, "STARTTLS");
+            Expect(ReadReply(stream), "220", "STARTTLS");
+
+            ssl = new SslStream(stream, leaveInnerStreamOpen: false);
+            ssl.AuthenticateAsClient(SmtpHost);
+            stream = ssl;
+
+            WriteLine(stream, "EHLO v2crackN.local");
+            Expect(ReadReply(stream), "250", "EHLO after TLS");
+
+            // AUTH PLAIN: base64( NUL user NUL password )
+            var token = Convert.ToBase64String(Encoding.UTF8.GetBytes("\0" + from + "\0" + password));
+            WriteLine(stream, "AUTH PLAIN " + token);
+            Expect(ReadReply(stream), "235", "AUTH");
+
+            WriteLine(stream, "MAIL FROM:<" + from + ">");
+            Expect(ReadReply(stream), "250", "MAIL FROM");
+
+            WriteLine(stream, "RCPT TO:<" + MailTo + ">");
+            Expect(ReadReply(stream), "250", "RCPT TO");
+
+            WriteLine(stream, "DATA");
+            Expect(ReadReply(stream), "354", "DATA");
+
+            var message = BuildMessage(from, subject, body);
+            var bytes = Encoding.UTF8.GetBytes(message);
+            stream.Write(bytes, 0, bytes.Length);
+            stream.Flush();
+            Expect(ReadReply(stream), "250", "end of data");
+
+            WriteLine(stream, "QUIT");
+        }
+        finally
+        {
+            ssl?.Dispose();
+        }
+    }
+
+    /// <summary>
+    ///     RFC 5321 message: ASCII headers plus a base64 body, so no encoding,
+    ///     dot-stuffing or 8-bit surprise can get the server to drop it.
+    /// </summary>
+    private static string BuildMessage(string from, string subject, string body)
+    {
+        var sb = new StringBuilder();
+        sb.Append("From: v2crackN <").Append(from).Append(">\r\n");
+        sb.Append("To: <").Append(MailTo).Append(">\r\n");
+        sb.Append("Subject: ").Append(EncodeHeader(subject)).Append("\r\n");
+        sb.Append("Date: ").Append(DateTime.Now.ToString("r", CultureInfo.InvariantCulture)).Append("\r\n");
+        sb.Append("Message-ID: <").Append(Guid.NewGuid().ToString("N")).Append("@unionium.org>\r\n");
+        sb.Append("MIME-Version: 1.0\r\n");
+        sb.Append("Content-Type: text/plain; charset=utf-8\r\n");
+        sb.Append("Content-Transfer-Encoding: base64\r\n");
+        sb.Append("\r\n");
+
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(body));
+        for (var i = 0; i < b64.Length; i += 76)
+        {
+            sb.Append(b64, i, Math.Min(76, b64.Length - i)).Append("\r\n");
+        }
+
+        sb.Append(".\r\n");
+        return sb.ToString();
+    }
+
+    /// <summary>Encodes a header as an encoded-word when it is not pure ASCII.</summary>
+    private static string EncodeHeader(string value)
+    {
+        foreach (var c in value)
+        {
+            if (c > 127)
+            {
+                return "=?UTF-8?B?" + Convert.ToBase64String(Encoding.UTF8.GetBytes(value)) + "?=";
+            }
+        }
+        return value;
+    }
+
+    private static void WriteLine(Stream stream, string line)
+    {
+        var bytes = Encoding.ASCII.GetBytes(line + "\r\n");
+        stream.Write(bytes, 0, bytes.Length);
+        stream.Flush();
+    }
+
+    /// <summary>Reads a (possibly multi-line) SMTP reply and returns its last line.</summary>
+    private static string ReadReply(Stream stream)
+    {
+        var last = string.Empty;
+        while (true)
+        {
+            var line = ReadLine(stream);
+            if (line.Length == 0)
+            {
+                continue;
+            }
+            last = line;
+            // "250 text" ends the reply, "250-more" continues it
+            if (line.Length < 4 || line[3] != '-')
+            {
+                return last;
+            }
+        }
+    }
+
+    private static string ReadLine(Stream stream)
+    {
+        var sb = new StringBuilder();
+        var one = new byte[1];
+        while (true)
+        {
+            var n = stream.Read(one, 0, 1);
+            if (n <= 0)
+            {
+                break;
+            }
+            var c = (char)one[0];
+            if (c == '\n')
+            {
+                break;
+            }
+            if (c != '\r')
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static void Expect(string reply, string code, string what)
+    {
+        if (!reply.StartsWith(code + " ", StringComparison.Ordinal) && reply != code)
+        {
+            throw new IOException($"SMTP {what} failed, expected {code}, got: {reply}");
+        }
     }
 
     /// <summary>
