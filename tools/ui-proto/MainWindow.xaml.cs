@@ -2856,7 +2856,7 @@ public partial class MainWindow : Window
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "https://t.me/wifitldev",
+                FileName = "https://t.me/v2crackNG",
                 UseShellExecute = true
             });
         }
