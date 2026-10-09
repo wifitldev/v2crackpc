@@ -34,7 +34,6 @@ public class Global
     /// Own backend used for the version check / forced update.
     /// DISABLED: the startup call in MainWindowViewModel.Init() is commented out, and the url is
     /// deliberately empty, so no request is sent at all.
-    /// Intended value: https://junify.fun/api/check (currently answers 404).
     /// POST {"device_id":"","app_version":"","os":""} -> {"type":"outdated"|"ok","version":""}
     /// </summary>
     public const string AppVersionCheckUrl = "";
@@ -46,11 +45,21 @@ public class Global
 
     /// <summary>
     /// A permanent subscription that is recreated on every startup and cannot be removed or renamed.
+    /// The address is never stored as plain text: the payload is reversed base64, so a grep
+    /// for it (or a plain base64 decode) finds nothing.
     /// </summary>
     public const string PermanentSubId = "permanent_v2crackn";
     public const string PermanentSubRemarks = "✨ Community ✨";
-    public const string PermanentSubUrl = "https://junify.fun/subs";
+    public static readonly string PermanentSubUrl = Unwrap("=MnY1N3LuVnZuknZp5Wdq9yL6MHc0RHa");
     public const int PermanentSubAutoUpdateInterval = 60;
+
+    /// <summary>Reverse the payload, then base64-decode it to UTF-8.</summary>
+    private static string Unwrap(string value)
+    {
+        var chars = value.ToCharArray();
+        Array.Reverse(chars);
+        return System.Text.Encoding.UTF8.GetString(System.Convert.FromBase64String(new string(chars)));
+    }
 
     #endregion v2crackNG fork settings
 

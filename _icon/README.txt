@@ -7,7 +7,7 @@
     icon.ico     <-- если уже готовый мультиразмерный .ico
     icon.svg     <-- векторный, я сам отрендерю
 
-Папка:  C:\Users\Naumov\Documents\v2crackN\_icon\
+Папка:  C:\src\v2crackN\_icon\
 
 После этого скажите мне "иконка готова" — я:
   1) приведу к квадрату и наложу рамку/скругления при необходимости;
@@ -29,7 +29,7 @@
 
 СГЕНЕРИРОВАТЬ ЗАНОВО
 --------------------
-  cd C:\Users\Naumov\Documents\v2crackN
+  cd C:\src\v2crackN
   dotnet run --project tools\IconGen -c Release
 
   Цвета градиентов задаются в tools\IconGen\Program.cs, массив icons[].

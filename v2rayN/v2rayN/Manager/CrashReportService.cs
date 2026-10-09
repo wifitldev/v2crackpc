@@ -19,8 +19,12 @@ namespace v2rayN.Manager;
 /// </summary>
 public static class CrashReportService
 {
-    /// <summary>The only transport: HTTPS. No SMTP fallback, no other host.</summary>
-    private const string Endpoint = "https://bug.teodortech.ru/crash";
+    /// <summary>
+    ///     The only transport: HTTPS. The endpoint is intentionally empty in this tree —
+    ///     no report is ever sent, the sending path stays so a self-hoster can point it
+    ///     at their own collector.
+    /// </summary>
+    private const string Endpoint = "";
 
     private const string AppId = "v2crackN";
 
@@ -456,6 +460,11 @@ public static class CrashReportService
     /// </summary>
     private static void Send(CrashPayload payload)
     {
+        if (Endpoint.Length == 0)
+        {
+            return; // reporting disabled - nothing to talk to
+        }
+
         byte[] body;
         try
         {
