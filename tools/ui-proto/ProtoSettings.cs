@@ -17,8 +17,8 @@ public static class ProtoSettings
     /// <summary>Допустимые значения способа пинга; всё прочее откатывается на mixed.</summary>
     private static readonly HashSet<string> ValidMethods = ["mixed", "get", "head", "tcp", "icmp"];
 
-    /// <summary>Способ пинга: mixed = все фазы подряд (TCP → реальный → UDP), дефолт.</summary>
-    public static string PingMethod { get; private set; } = "mixed";
+    /// <summary>Способ пинга: mixed = все фазы подряд, get = via Proxy GET (дефолт).</summary>
+    public static string PingMethod { get; private set; } = "get";
 
     static ProtoSettings() => Load();
 
@@ -45,7 +45,7 @@ public static class ProtoSettings
     public static void SetPingMethod(string method)
     {
         if (!ValidMethods.Contains(method))
-            method = "mixed";
+            method = "get";
 
         PingMethod = method;
         Save();

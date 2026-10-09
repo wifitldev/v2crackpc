@@ -1,4 +1,4 @@
-﻿<Window x:Class="UiProto.MainWindow"
+<Window x:Class="UiProto.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="v2crackN"
@@ -256,37 +256,58 @@
             <Setter Property="FontSize" Value="17"/>
         </Style>
 
-        <!-- thin dark scrollbar (implicit - window scoped) -->
+        <!-- thin dark scrollbar (implicit, window-scoped).
+             Track draws the thumb proportionally; with 600+ nodes that is a few px,
+             which reads as a clipped button. Give the thumb a real minimum so it
+             always looks like a proper handle. -->
         <Style TargetType="ScrollBar">
             <Setter Property="Width" Value="10"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="0,0,2,0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ScrollBar">
                         <Grid Background="Transparent">
                             <Track x:Name="PART_Track" IsDirectionReversed="True">
                                 <Track.Thumb>
-                                    <Thumb>
+                                    <Thumb x:Name="PART_Thumb" MinHeight="30">
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="Thumb">
-                                                <Border Background="{DynamicResource 2C3E5C}" CornerRadius="5" Margin="2,1"/>
+                                                <Border Background="{DynamicResource 2C3E5C}" CornerRadius="4"
+                                                        Margin="3,6" x:Name="ThumbBorder"/>
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>
                                 </Track.Thumb>
                                 <Track.DecreaseRepeatButton>
-                                    <RepeatButton Command="{x:Static ScrollBar.PageUpCommand}"
+                                    <RepeatButton x:Name="PART_Dec" Command="{x:Static ScrollBar.PageUpCommand}"
                                                   Opacity="0" Focusable="False" IsTabStop="False"/>
                                 </Track.DecreaseRepeatButton>
                                 <Track.IncreaseRepeatButton>
-                                    <RepeatButton Command="{x:Static ScrollBar.PageDownCommand}"
+                                    <RepeatButton x:Name="PART_Inc" Command="{x:Static ScrollBar.PageDownCommand}"
                                                   Opacity="0" Focusable="False" IsTabStop="False"/>
                                 </Track.IncreaseRepeatButton>
                             </Track>
                         </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                                <Setter TargetName="PART_Thumb" Property="MinHeight" Value="0"/>
+                                <Setter TargetName="PART_Thumb" Property="MinWidth" Value="30"/>
+                                <Setter TargetName="PART_Dec" Property="Command" Value="{x:Static ScrollBar.PageLeftCommand}"/>
+                                <Setter TargetName="PART_Inc" Property="Command" Value="{x:Static ScrollBar.PageRightCommand}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Width" Value="Auto"/>
+                    <Setter Property="Height" Value="10"/>
+                    <Setter Property="Margin" Value="2,0,0,0"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -313,6 +334,8 @@
                                        FontSize="16" FontWeight="SemiBold"/>
                             <TextBlock Text="Proxy Client" Foreground="{DynamicResource Text3}"
                                        FontSize="11"/>
+                            <TextBlock x:Name="AppVersion" Text="" Foreground="{DynamicResource Text3}"
+                                       FontSize="10" Margin="0,1,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -398,46 +421,41 @@
                                                FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"/>
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
-                                                CornerRadius="8" Padding="8,4" Cursor="Hand" Tag="sub"
+                                                CornerRadius="8" Padding="8,4" Cursor="Hand" Tag="auto"
                                                 MouseLeftButtonDown="TreeAdd_Click">
-                                            <TextBlock Text="+ Subscription" Foreground="{DynamicResource C3D0E5}" FontSize="11.5"/>
-                                        </Border>
-                                        <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
-                                                CornerRadius="8" Padding="8,4" Cursor="Hand" Margin="6,0,0,0" Tag="server"
-                                                MouseLeftButtonDown="TreeAdd_Click">
-                                            <TextBlock Text="+ Server" Foreground="{DynamicResource C3D0E5}" FontSize="11.5"/>
+                                            <TextBlock Text="+ Добавить" Foreground="{DynamicResource C3D0E5}" FontSize="11.5"/>
                                         </Border>
                                         <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
                                                 CornerRadius="8" Padding="8,4" Cursor="Hand" Margin="6,0,0,0" Tag="group"
                                                 MouseLeftButtonDown="TreeAdd_Click">
-                                            <TextBlock Text="+ Group" Foreground="{DynamicResource C3D0E5}" FontSize="11.5"/>
+                                            <TextBlock Text="+ Группа" Foreground="{DynamicResource C3D0E5}" FontSize="11.5"/>
+                                        </Border>
+                                        <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
+                                                CornerRadius="8" Padding="8,4" Cursor="Hand" Margin="6,0,0,0"
+                                                ToolTip="Update servers" MouseLeftButtonDown="TreeRefresh_Click">
+                                            <TextBlock x:Name="TreeRefreshText" Text="⟳" FontSize="13" Foreground="{DynamicResource C3D0E5}"/>
+                                        </Border>
+                                        <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
+                                                CornerRadius="8" Padding="8,4" Cursor="Hand" Margin="6,0,0,0"
+                                                ToolTip="Ping" MouseLeftButtonDown="TreePingAll_Click">
+                                            <TextBlock x:Name="TreePingText" Text="⚡" FontSize="12" Foreground="{DynamicResource C3D0E5}"/>
                                         </Border>
                                     </StackPanel>
                                 </Grid>
-                                <!-- refresh / ping: панель как в Happ (статус слева, иконки справа) -->
-                                <Border DockPanel.Dock="Top" Padding="0,2" Margin="0,0,0,8">
-                                    <Grid>
-                                        <TextBlock x:Name="TreePingStatus" VerticalAlignment="Center"
-                                                   Margin="0,0,80,0" TextTrimming="CharacterEllipsis"
-                                                   FontSize="11" Foreground="{DynamicResource Text3}" Text=""/>
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
-                                                    VerticalAlignment="Center">
-                                            <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
-                                                    CornerRadius="7" Padding="8,4" Cursor="Hand"
-                                                    ToolTip="Update servers"
-                                                    MouseLeftButtonDown="TreeRefresh_Click">
-                                                <TextBlock x:Name="TreeRefreshText" Text="⟳" FontSize="13"
-                                                           Foreground="{DynamicResource C3D0E5}"/>
-                                            </Border>
-                                            <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
-                                                    CornerRadius="7" Padding="8,4" Cursor="Hand" Margin="6,0,0,0"
-                                                    ToolTip="Ping"
-                                                    MouseLeftButtonDown="TreePingAll_Click">
-                                                <TextBlock x:Name="TreePingText" Text="⚡" FontSize="12"
-                                                           Foreground="{DynamicResource C3D0E5}"/>
-                                            </Border>
-                                        </StackPanel>
-                                    </Grid>
+                                <Border DockPanel.Dock="Top" Padding="0" Margin="0,0,0,8">
+                                    <TextBlock x:Name="TreePingStatus" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" FontSize="11"
+                                               Foreground="{DynamicResource Text3}" Text=""/>
+                                </Border>                                <!-- filter: поиск сервера по имени / адресу / аннотации -->
+                                <Border DockPanel.Dock="Top" Margin="0,0,0,8">
+                                    <TextBox x:Name="TreeFilterBox" Padding="8,5" FontSize="12"
+                                             Background="{DynamicResource 101B2E}"
+                                             Foreground="{DynamicResource Text1}"
+                                             CaretBrush="{DynamicResource C3D0E5}"
+                                             BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
+                                             VerticalContentAlignment="Center"
+                                             ToolTip="Search servers — name, address or note"
+                                             TextChanged="TreeFilter_Changed"/>
                                 </Border>
                                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                                     <ItemsControl x:Name="ServerTree">
@@ -470,7 +488,7 @@
                                                             <TextBlock Grid.Column="1" Text="{Binding CountText}" FontSize="11.5"
                                                                        Foreground="{DynamicResource Text3}" VerticalAlignment="Center"
                                                                        Margin="8,0,0,0"/>
-                                                            <!-- hover actions: rename / pin / delete -->
+                                                            <!-- hover actions: update subscription / ping / rename / pin / delete -->
                                                             <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                                                 <StackPanel.Style>
                                                                     <Style TargetType="StackPanel">
@@ -493,6 +511,20 @@
                                                                         </Style.Triggers>
                                                                     </Style>
                                                                 </StackPanel.Style>
+                                                                <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
+                                                                        CornerRadius="6" Padding="6,3" Margin="6,0,0,0" Cursor="Hand"
+                                                                        Tag="{Binding Id}" ToolTip="Update subscription"
+                                                                        Visibility="{Binding SubActionsVisibility}"
+                                                                        MouseLeftButtonDown="GroupUpdateSub_Click">
+                                                                    <TextBlock Text="⟳" FontSize="11.5" Foreground="{DynamicResource C3D0E5}"/>
+                                                                </Border>
+                                                                <Border Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}" BorderThickness="1"
+                                                                        CornerRadius="6" Padding="6,3" Margin="4,0,0,0" Cursor="Hand"
+                                                                        Tag="{Binding Id}" ToolTip="Ping all servers in this group"
+                                                                        Visibility="{Binding GroupPingVisibility}"
+                                                                        MouseLeftButtonDown="GroupPing_Click">
+                                                                    <TextBlock Text="⚡" FontSize="11" Foreground="{DynamicResource C3D0E5}"/>
+                                                                </Border>
                                                                 <Border Tag="{Binding Id}" Cursor="Hand" Padding="6,3" Margin="6,0,0,0"
                                                                         Background="{DynamicResource 1A2942}" BorderBrush="{DynamicResource 2E4466}"
                                                                         BorderThickness="1" CornerRadius="6" VerticalAlignment="Center"
@@ -615,7 +647,7 @@
                         </Border>
 
                         <!-- power -->
-                        <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <StackPanel Grid.Row="0" Grid.Column="1" VerticalAlignment="Top" HorizontalAlignment="Center">
                             <Border Width="186" Height="186" CornerRadius="93"
                                     Background="{DynamicResource 101B2E}" BorderBrush="{DynamicResource 263B58}" BorderThickness="2"
                                     HorizontalAlignment="Center">
@@ -751,14 +783,12 @@
                                                    VerticalAlignment="Center" IsHitTestVisible="False"/>
                                     </Grid>
                                 </Border>
-                                <TextBlock x:Name="ModeHint" FontSize="12" Margin="0,10,0,0"
-                                           Foreground="{DynamicResource Text3}" TextWrapping="Wrap"
-                                           MaxWidth="430" TextAlignment="Center" Width="430"
-                                           Text="Apps read the local port 127.0.0.1:10890 - only proxy-aware traffic goes out"/>
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- stats (narrow, right side) -->
+                        <TextBlock x:Name="ModeHint" Visibility="Collapsed"/>
+
+                         <!-- stats (narrow, right side) -->
                         <Grid Grid.Row="1" Grid.Column="1" Width="400" HorizontalAlignment="Right"
                               VerticalAlignment="Bottom" Margin="0,0,0,16">
                         <Grid.ColumnDefinitions>
@@ -1246,9 +1276,9 @@
                             <StackPanel>
                                 <TextBlock Text="v2crackN" FontSize="16" FontWeight="Bold"
                                            Foreground="{DynamicResource Text1}" Margin="0,0,0,4"/>
-                                <TextBlock Text="1.1.2" FontSize="12" Foreground="{DynamicResource Text3}"
+                                <TextBlock x:Name="AboutVersion" Text="" FontSize="12" Foreground="{DynamicResource Text3}"
                                            Margin="0,0,0,12"/>
-                                <TextBlock Text="ServiceLib 1.1.2 · logic ON" FontSize="11.5"
+                                <TextBlock x:Name="AboutServiceLib" Text="ServiceLib · logic ON" FontSize="11.5"
                                            Foreground="{DynamicResource Text2}" Margin="0,0,0,4"/>
                                 <TextBlock x:Name="AboutSocks" FontSize="11.5"
                                            Foreground="{DynamicResource Text2}" Margin="0,0,0,4"/>
@@ -1420,7 +1450,7 @@
                             <Border Style="{StaticResource Card}" Padding="6,2">
                                 <StackPanel>
                                     <RadioButton x:Name="PingMixed" GroupName="pingmethod" Tag="mixed"
-                                                 Style="{StaticResource PingRadio}" IsChecked="True"
+                                                  Style="{StaticResource PingRadio}"
                                                  Checked="PingMethod_Changed">
                                         <StackPanel>
                                             <TextBlock Text="Mixed (all tests)" Foreground="{DynamicResource Text1}" FontSize="13.5"/>
@@ -1595,7 +1625,7 @@
                             <TextBlock x:Name="BarText" Text="Not connected"
                                        Foreground="{DynamicResource Text2}" FontSize="12" Margin="8,0,0,0"/>
                         </StackPanel>
-                        <TextBlock Grid.Column="1" x:Name="BarLog" Text="Starting ServiceLib 1.1.2…"
+                        <TextBlock Grid.Column="1" x:Name="BarLog" Text="Starting ServiceLib…"
                                    Foreground="{DynamicResource Text3}" FontSize="11.5"
                                    TextTrimming="CharacterEllipsis"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>

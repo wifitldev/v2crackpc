@@ -112,7 +112,7 @@ public static class ThemeManager
 
             foreach (var entry in Table)
             {
-                var hex = light && entry.Value.Light.Length > 0 ? entry.Value.Light : entry.Value.Dark;
+                var hex = ThemeHex(entry.Key, entry.Value, light);
                 if (!TryColor(hex, out var color))
                     continue;
 
@@ -132,6 +132,36 @@ public static class ThemeManager
             dispatcher.Invoke(ApplyCore);
     }
 
+    private static string ThemeHex(string key, (string Dark, string Light) colors, bool light)
+    {
+        if (Current.Equals("Console", StringComparison.OrdinalIgnoreCase))
+        {
+            if (key is "Accent" or "AccentSoft" or "2E9BE6") return key == "AccentSoft" ? "052E16" : "22C55E";
+            if (key is "Text1" or "F2F6FF" or "C3D0E5") return "D1FAE5";
+            if (key is "Text2" or "8B98AF" or "B7C5DC") return "86EFAC";
+            if (key is "Text3" or "6B7994" or "7E8AA0") return "4ADE80";
+            if (key is "Ok" or "6BECAC" or "2F8A63") return "22C55E";
+            if (key is "CardStroke" or "2E4466" or "22314C" or "24334F") return "14532D";
+            if (key is "SidebarBg" or "PageBg" or "0A1120" or "0E1626" or "0C1526") return "020604";
+            if (key is "CardBg" or "CardBg2" or "0F1728" or "101B2E" or "121B2D" or "1A2942") return "071A0D";
+            return colors.Dark;
+        }
+
+        if (Current.Equals("Aurora", StringComparison.OrdinalIgnoreCase))
+        {
+            if (key is "Accent" or "2E9BE6") return "A78BFA";
+            if (key is "AccentSoft" or "13233A") return "312E81";
+            if (key is "Text1" or "F2F6FF") return "F5F3FF";
+            if (key is "Text2" or "C3D0E5") return "C4B5FD";
+            if (key is "Text3" or "6B7994") return "8B8BAA";
+            if (key is "SidebarBg" or "PageBg" or "0A1120" or "0E1626") return "080516";
+            if (key is "CardBg" or "CardBg2" or "0F1728" or "101B2E" or "121B2D") return "120D2B";
+            if (key is "CardStroke" or "2E4466" or "22314C" or "24334F") return "3B2A68";
+            return colors.Dark;
+        }
+
+        return light && colors.Light.Length > 0 ? colors.Light : colors.Dark;
+    }
     private static bool ResolveLight(string theme) =>
         theme.Equals(nameof(ETheme.Light), StringComparison.OrdinalIgnoreCase)
         || (theme.Equals(nameof(ETheme.FollowSystem), StringComparison.OrdinalIgnoreCase) && IsSystemLight());

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <AssemblyName>v2crackN-Installer</AssemblyName>
+    <AssemblyTitle>v2crackN Installer</AssemblyTitle>
+    <Product>v2crackN</Product>
+    <ApplicationIcon>$(MSBuildProjectDirectory)\..\..\v2rayN\v2rayN\Resources\v2rayN.ico</ApplicationIcon>
+  </PropertyGroup>
+  <Target Name="RequirePayload" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(ZipPath)' == ''" Text="ZipPath is required. Build the installer through tools\pack-ui-proto.ps1 -Installer." />
+    <Error Condition="'$(ZipPath)' != '' and !Exists('$(ZipPath)')" Text="Installer payload was not found: $(ZipPath)" />
+  </Target>
+  <ItemGroup>
+    <EmbeddedResource Include="$(ZipPath)" LogicalName="payload.zip" Condition="'$(ZipPath)' != '' and Exists('$(ZipPath)')" />
+  </ItemGroup>
+</Project>

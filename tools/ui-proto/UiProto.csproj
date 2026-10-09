@@ -10,14 +10,18 @@
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>v2crackN-UiProto</AssemblyName>
+    <AssemblyName>v2crackN</AssemblyName>
     <RootNamespace>UiProto</RootNamespace>
+    <!-- иконка приложения: та же, что у основного клиента (её генерирует tools/IconGen) -->
+    <ApplicationIcon>..\..\v2rayN\v2rayN\Resources\v2rayN.ico</ApplicationIcon>
+    <!-- версия для UI; упаковщик перекрывает её через -p:Version=… -->
+    <Version>1.2.0</Version>
     <!-- нативные библиотеки (sqlite, skia) внутрь единого exe -->
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <AssemblyTitle>v2crackN</AssemblyTitle>
     <Product>v2crackN</Product>
-    <Description>v2crackN client backed by ServiceLib 1.1.2 logic</Description>
+    <Description>v2crackN client for Windows</Description>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 

@@ -1,4 +1,7 @@
 using System;
+using System.Drawing;
+using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -56,6 +59,7 @@ public sealed class TrayIcon : IDisposable
 
     private readonly Window _window;
     private readonly IntPtr _hwnd;
+    private Icon? _icon;
     private bool _disposed;
 
     public TrayIcon(Window window)
@@ -70,8 +74,8 @@ public sealed class TrayIcon : IDisposable
             uID = ID_TRAY_ICON,
             uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage = TRAY_MESSAGE,
-            hIcon = LoadIcon(IntPtr.Zero, new IntPtr(32516)), // IDI_APPLICATION
-            szTip = "v2crackN"
+            hIcon = LoadAppIcon(),
+            szTip = AppTip()
         };
 
         Shell_NotifyIcon(NIM_ADD, ref nid);
@@ -84,6 +88,29 @@ public sealed class TrayIcon : IDisposable
             if (window.WindowState == WindowState.Minimized)
                 window.Hide();
         };
+    }
+
+    /// <summary>Иконка приложения из текущего exe; иначе системная IDI_APPLICATION.</summary>
+    private IntPtr LoadAppIcon()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
+            {
+                _icon = Icon.ExtractAssociatedIcon(exe);
+                if (_icon is not null) return _icon.Handle;
+            }
+        }
+        catch { /* fallback ниже */ }
+        return LoadIcon(IntPtr.Zero, new IntPtr(32516)); // IDI_APPLICATION
+    }
+
+    /// <summary>Подсказка при наведении: название и версия.</summary>
+    private static string AppTip()
+    {
+        var v = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3);
+        return string.IsNullOrEmpty(v) ? "v2crackN" : "v2crackN " + v;
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -116,13 +143,15 @@ public sealed class TrayIcon : IDisposable
     {
         var menu = new System.Windows.Controls.ContextMenu();
 
+        var info = new System.Windows.Controls.MenuItem { Header = AppTip(), IsEnabled = false };
+
         var connect = new System.Windows.Controls.MenuItem { Header = "Подключить" };
         connect.Click += (s, e) => _ = ProtoApp.Instance.ConnectAsync();
 
         var disconnect = new System.Windows.Controls.MenuItem { Header = "Отключить" };
         disconnect.Click += (s, e) => _ = ProtoApp.Instance.DisconnectAsync();
 
-        var show = new System.Windows.Controls.MenuItem { Header = "Показать" };
+        var show = new System.Windows.Controls.MenuItem { Header = "Показать окно" };
         show.Click += (s, e) => ShowWindow();
 
         var exit = new System.Windows.Controls.MenuItem { Header = "Выйти" };
@@ -132,13 +161,17 @@ public sealed class TrayIcon : IDisposable
             else _window.Close();
         };
 
+        menu.Items.Add(info);
+        menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(connect);
         menu.Items.Add(disconnect);
         menu.Items.Add(new System.Windows.Controls.Separator());
         menu.Items.Add(show);
         menu.Items.Add(exit);
 
+        // меню открывается возле курсора, а не в углу экрана
         menu.PlacementTarget = null;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.MousePoint;
         menu.IsOpen = true;
     }
 
@@ -154,5 +187,7 @@ public sealed class TrayIcon : IDisposable
             uID = ID_TRAY_ICON
         };
         Shell_NotifyIcon(NIM_DELETE, ref nid);
+        try { _icon?.Dispose(); } catch { /* хэндл уже отдан системе */ }
+        _icon = null;
     }
 }

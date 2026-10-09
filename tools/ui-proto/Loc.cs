@@ -233,7 +233,7 @@ public static class Loc
         ["v2crackN"] = ["v2crackN", "v2crackN", "v2crackN", "v2crackN", "v2crackN", "v2crackN", "v2crackN", "v2crackN"],
         ["Starting ServiceLib…"] = ["Запуск ServiceLib…", "正在启动 ServiceLib…", "正在啟動 ServiceLib…", "Démarrage de ServiceLib…", "ServiceLib indítása…", "Memulai ServiceLib…", "ServiceLib başladılır…", "در حال راه‌اندازی ServiceLib…"],
         ["Loading ServiceLib…"] = ["Загрузка ServiceLib…", "正在加载 ServiceLib…", "正在載入 ServiceLib…", "Chargement de ServiceLib…", "ServiceLib betöltése…", "Memuat ServiceLib…", "ServiceLib yüklənir…", "در حال بارگذاری ServiceLib…"],
-        ["ServiceLib 1.1.2 · logic ON"] = ["ServiceLib 1.1.2 · логика включена", "ServiceLib 1.1.2 · 逻辑已启用", "ServiceLib 1.1.2 · 邏輯已啟用", "ServiceLib 1.1.2 · logique activée", "ServiceLib 1.1.2 · logika bekapcsolva", "ServiceLib 1.1.2 · logika aktif", "ServiceLib 1.1.2 · mantiq aktivdir", "ServiceLib 1.1.2 · منطق فعال"],
+        ["ServiceLib · logic ON"] = ["ServiceLib · логика включена", "ServiceLib · 逻辑已启用", "ServiceLib · 邏輯已啟用", "ServiceLib · logique activée", "ServiceLib · logika bekapcsolva", "ServiceLib · logika aktif", "ServiceLib · mantiq aktivdir", "ServiceLib · منطق فعال"],
         ["v2crackN 1.1.2"] = ["v2crackN 1.1.2", "v2crackN 1.1.2", "v2crackN 1.1.2", "v2crackN 1.1.2", "v2crackN 1.1.2", "v2crackN 1.1.2", "v2crackN 1.1.2", "v2crackN 1.1.2"],
         ["About"] = ["О программе", "关于程序", "關於程式", "À propos", "A programról", "Tentang program", "Proqram haqqında", "درباره برنامه"],
         ["SOCKS: 127.0.0.1:{0}"] = ["SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}", "SOCKS: 127.0.0.1:{0}"],

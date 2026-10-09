@@ -1,7 +1,8 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -36,6 +37,9 @@ public partial class MainWindow : Window
     ];
 
     private readonly DispatcherTimer _timer;
+
+    /// <summary>Debounce-таймер строки поиска в дереве серверов.</summary>
+    private DispatcherTimer? _filterDebounce;
 
     private bool _initDone;
     private bool _connected;
@@ -97,6 +101,12 @@ public partial class MainWindow : Window
 
         // язык выбран в App.OnStartup до разбора XAML — здесь доводим дерево окна
         Loc.Apply(this);
+
+        // версия сборки — в заголовок окна и под логотипом в левой колонке
+        var ver = AppVersionText();
+        Title = "v2crackN " + ver;
+        if (AppVersion is not null) AppVersion.Text = "v" + ver;
+        if (AboutVersion is not null) AboutVersion.Text = "v" + ver;
 
         ApplyStartupArgs(Environment.GetCommandLineArgs());
         SetMode(_startTunnel);
@@ -237,6 +247,18 @@ public partial class MainWindow : Window
 
     // ================================================================= init
 
+    /// <summary>Версия текущей сборки без build-metadata (+hash) — для заголовка и «О программе».</summary>
+    private static string AppVersionText()
+    {
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        var ver = string.IsNullOrEmpty(info) ? asm.GetName().Version?.ToString() : info;
+        ver ??= string.Empty;
+        var plus = ver.IndexOf('+');
+        if (plus >= 0) ver = ver[..plus];
+        return ver.Length == 0 ? "1.2.0" : ver;
+    }
+
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         var app = ProtoApp.Instance;
@@ -280,9 +302,10 @@ public partial class MainWindow : Window
         _initDone = true;
         SyncFromConfig();
 
-        await RefreshNodeCardAsync();
-        await RefreshServersTreeAsync();
-        await LoadRoutingsAsync();
+        await Task.WhenAll(
+            RefreshNodeCardAsync(),
+            RefreshServersTreeAsync(),
+            LoadRoutingsAsync());
         PaintIdle();
 
         BarLog.Text = Loc.TF("ready · socks 127.0.0.1:{0}", app.SocksPort);
@@ -291,8 +314,8 @@ public partial class MainWindow : Window
         if (InfoLink is not null)
         {
             var info = new System.Text.StringBuilder();
-            info.AppendLine(Loc.T("v2crackN 1.1.2"));
-            info.AppendLine(Loc.T("ServiceLib 1.1.2 · logic ON"));
+            info.AppendLine("v2crackN " + AppVersionText());
+            info.AppendLine(Loc.T("ServiceLib · logic ON"));
             info.AppendLine(Loc.TF("SOCKS: 127.0.0.1:{0}", app.SocksPort));
             info.AppendLine(Loc.TF("HTTP: 127.0.0.1:{0}", app.HttpPort));
             InfoLink.ToolTip = info.ToString();
@@ -1358,6 +1381,8 @@ public partial class MainWindow : Window
         ("FollowSystem", "Follow system"),
         ("Dark", "Dark"),
         ("Light", "Light"),
+        ("Console", "Console green"),
+        ("Aurora", "Aurora violet"),
     ];
 
     private void ThemeBtn_Click(object sender, MouseButtonEventArgs e)
@@ -1539,6 +1564,8 @@ public partial class MainWindow : Window
         {
             "followsystem" => "Follow system",
             "light" => "Light",
+            "console" => "Console green",
+            "aurora" => "Aurora violet",
             _ => "Dark",
         });
 
@@ -1698,13 +1725,26 @@ public partial class MainWindow : Window
         try
         {
             var app = ProtoApp.Instance;
-            var profiles = await app.ProfilesAsync() ?? [];
-            var groups = await app.GroupsAsync() ?? [];
-            var current = await app.CurrentProfileAsync();
+            // Эти запросы независимы: выполняем их одновременно, чтобы стартовое
+            // построение дерева не ждало ServiceLib-переходы один за другим.
+            var profilesTask = app.ProfilesAsync();
+            var groupsTask = app.GroupsAsync();
+            var currentTask = app.CurrentProfileAsync();
+            var profileExTask = ProfileExManager.Instance.GetProfileExs();
+            await Task.WhenAll(profilesTask, groupsTask, currentTask, profileExTask);
+
+            var profiles = await profilesTask ?? [];
+            var groups = await groupsTask ?? [];
+            var current = await currentTask;
+
+            // строка поиска: пустая — показываем всё, непустая — только совпадения
+            var filter = (TreeFilterBox?.Text ?? string.Empty).Trim();
+            if (filter.Length > 0)
+                profiles = profiles.Where(p => MatchFilter(p, filter)).ToList();
 
             // прошлые замеры пинга (ProfileExItem.Delay, 0 = не пинговался)
             var delays = new Dictionary<string, int>();
-            foreach (var px in await ProfileExManager.Instance.GetProfileExs())
+            foreach (var px in await profileExTask)
                 if (!string.IsNullOrEmpty(px.IndexId) && px.Delay != 0)
                     delays.TryAdd(px.IndexId, px.Delay);
 
@@ -1738,24 +1778,28 @@ public partial class MainWindow : Window
                 .Where(p => string.IsNullOrEmpty(p.Subid) || !known.Contains(p.Subid))
                 .ToList();
 
-            var vms = new List<GroupVm>
+            var vms = new List<GroupVm>();
+            if (filter.Length == 0 || singles.Count > 0)
             {
-                new("", Loc.T("Server list"), "", singles.Count,
-                    singles.Select(ToVm).ToList(), _collapsedGroups.Contains(""), false),
-            };
+                vms.Add(new GroupVm("", Loc.T("Server list"), "", singles.Count,
+                    singles.Select(ToVm).ToList(),
+                    _collapsedGroups.Contains("") && filter.Length == 0, false));
+            }
 
             // закреплённые группы (SubItem.Memo == "pinned") идут первыми
             foreach (var g in groups.OrderBy(t => t.Memo == ProtoApp.PinnedMemo ? 0 : 1))
             {
                 var items = profiles.Where(p => p.Subid == g.Id).ToList();
+                if (filter.Length > 0 && items.Count == 0) continue;
                 vms.Add(new GroupVm(
                     g.Id,
                     string.IsNullOrEmpty(g.Remarks) ? "group" : g.Remarks,
                     string.IsNullOrEmpty(g.Url) ? Loc.T("group") : Loc.T("sub"),
                     items.Count,
                     items.Select(ToVm).ToList(),
-                    _collapsedGroups.Contains(g.Id),
-                    g.Memo == ProtoApp.PinnedMemo));
+                    _collapsedGroups.Contains(g.Id) && filter.Length == 0,
+                    g.Memo == ProtoApp.PinnedMemo,
+                    !string.IsNullOrEmpty(g.Url)));
             }
 
             ServerTree.ItemsSource = vms;
@@ -1770,6 +1814,45 @@ public partial class MainWindow : Window
         {
             BarLog.Text = "error: " + ex.Message;
         }
+    }
+
+    // ------------------------------------------------- tree search
+
+    /// <summary>Строка поиска: 220 мс тишины — и дерево перерисовывается с фильтром.</summary>
+    private void TreeFilter_Changed(object sender, TextChangedEventArgs e)
+    {
+        if (!_initDone || TreeFilterBox is null) return;
+
+        _filterDebounce ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(220) };
+        _filterDebounce.Stop();
+        _filterDebounce.Tick -= FilterDebounce_Tick;
+        _filterDebounce.Tick += FilterDebounce_Tick;
+        _filterDebounce.Start();
+    }
+
+    private async void FilterDebounce_Tick(object? sender, EventArgs e)
+    {
+        _filterDebounce?.Stop();
+        try
+        {
+            await RefreshServersTreeAsync();
+        }
+        catch (Exception ex)
+        {
+            BarLog.Text = "error: " + ex.Message;
+        }
+    }
+
+    /// <summary>Совпадение сервера со строкой поиска: имя, адрес:порт, аннотация, тип протокола.</summary>
+    private static bool MatchFilter(ProfileItem p, string filter)
+    {
+        static bool Has(string? hay, string needle) =>
+            !string.IsNullOrEmpty(hay) && hay.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
+        return Has(p.Remarks, filter)
+            || Has(p.GetSummary(), filter)
+            || Has($"{p.Address}:{p.Port}", filter)
+            || Has(p.ConfigType.ToString(), filter);
     }
 
     // ------------------------------------------------- refresh & ping
@@ -1936,6 +2019,7 @@ public partial class MainWindow : Window
     /// </summary>
     private static Task RunPingPhaseAsync(List<ProfileItem> items, PingPhase phase) => phase switch
     {
+        PingPhase.Realping => ProtoApp.Instance.PingGetAsync(items),
         PingPhase.HttpHead => ProtoApp.Instance.PingHeadAsync(items),
         PingPhase.Icmp => ProtoApp.Instance.PingIcmpAsync(items),
         _ => ProtoApp.Instance.PingAsync(items, ToAction(phase)),
@@ -2120,20 +2204,41 @@ public partial class MainWindow : Window
         _ => (Brush)FindResource("Text3"),
     };
 
-    private async void GroupHeader_Click(object sender, MouseButtonEventArgs e)
+    private void GroupHeader_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        if (sender is not Border { Tag: string id }) return;
-        if (!_collapsedGroups.Remove(id))
+        if (sender is not Border { Tag: string id } header) return;
+
+        var collapsed = !_collapsedGroups.Contains(id);
+        if (collapsed)
             _collapsedGroups.Add(id);
-        try
+        else
+            _collapsedGroups.Remove(id);
+
+        // Переключаем уже созданный контейнер сразу, без повторной загрузки БД
+        // и пересборки всего дерева — раскрытие/сворачивание ощущается мгновенно.
+        var list = FindVisualChild<ItemsControl>(header.Parent as DependencyObject);
+        if (list is not null)
+            list.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+
+        var empty = FindVisualChild<TextBlock>(header.Parent as DependencyObject,
+            t => t.Text == "No servers yet — use + Server");
+        if (empty is not null)
+            empty.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject? root, Func<T, bool>? predicate = null)
+        where T : DependencyObject
+    {
+        if (root is null) return null;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
         {
-            await RefreshServersTreeAsync();
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match && (predicate is null || predicate(match))) return match;
+            var nested = FindVisualChild(child, predicate);
+            if (nested is not null) return nested;
         }
-        catch (Exception ex)
-        {
-            BarLog.Text = "error: " + ex.Message;
-        }
+        return null;
     }
 
     // ------------------------------------------------- group hover actions
@@ -2191,6 +2296,61 @@ public partial class MainWindow : Window
             await RunOpAsync(() => ProtoApp.Instance.DeleteGroupAsync(id));
             await RefreshServersTreeAsync();
             await RefreshNodeCardAsync();
+        }
+        catch (Exception ex)
+        {
+            BarLog.Text = "error: " + ex.Message;
+        }
+    }
+
+    // ------------------------------------------------- per-group actions
+
+    /// <summary>«⟳» на шапке подписки — обновить только её и перечитать дерево.</summary>
+    private async void GroupUpdateSub_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Border { Tag: string id }) return;
+        if (!_initDone || _updatingServers || string.IsNullOrEmpty(id)) return;
+
+        try
+        {
+            _updatingServers = true;
+            TreePingStatus.Text = Loc.T("Updating…");
+
+            var rc = await ProtoApp.Instance.UpdateSubscriptionAsync(id);
+            TreePingStatus.Text = rc.Message;
+            if (!rc.Success) BarLog.Text = rc.Message;
+
+            await RefreshServersTreeAsync();
+        }
+        catch (Exception ex)
+        {
+            BarLog.Text = "error: " + ex.Message;
+        }
+        finally
+        {
+            _updatingServers = false;
+        }
+    }
+
+    /// <summary>«⚡» на шапке группы — пинг всех серверов только этой группы.</summary>
+    private async void GroupPing_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (sender is not Border { Tag: string id }) return;
+        if (!_initDone || _pinging) return;
+
+        try
+        {
+            var profiles = await ProtoApp.Instance.ProfilesAsync() ?? [];
+            var mine = profiles.Where(t => t.Subid == id).ToList();
+            if (mine.Count == 0)
+            {
+                TreePingStatus.Text = Loc.T("No servers yet — use + Server");
+                return;
+            }
+
+            await PingAsync(mine);
         }
         catch (Exception ex)
         {
@@ -2398,7 +2558,7 @@ public partial class MainWindow : Window
         try
         {
             await OpenPickerAsync();
-            ShowImport(mode);
+            ShowImport(mode == "auto" ? "auto" : mode);
         }
         catch (Exception ex)
         {
@@ -2427,6 +2587,7 @@ public partial class MainWindow : Window
         _importMode = mode;
         ImportHint.Text = Loc.T(mode switch
         {
+            "auto" => "Вставь ссылку на сервер или URL подписки — тип определится автоматически",
             "sub" => "Subscription URL — Add will fetch its servers right away",
             "group" => "Group name — move servers into it with the ⇄ button",
             _ => "Server link (ss:// vmess:// vless:// trojan:// hysteria2:// …) or a base64 list",
@@ -2434,6 +2595,14 @@ public partial class MainWindow : Window
         ImportBox.Text = string.Empty;
         ImportPanel.Visibility = Visibility.Visible;
         _ = ImportBox.Focus();
+    }
+
+    private static bool LooksLikeSubscription(string text)
+    {
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
+            return uri.Scheme is "http" or "https";
+        return text.Contains("\n", StringComparison.Ordinal) &&
+               !text.Contains("://", StringComparison.Ordinal);
     }
 
     private void ImportCancel_Click(object sender, MouseButtonEventArgs e)
@@ -2467,6 +2636,8 @@ public partial class MainWindow : Window
 
         Func<Task<OpResult>> op = _importMode switch
         {
+            "auto" when LooksLikeSubscription(text) => () => ProtoApp.Instance.AddSubscriptionAsync(text),
+            "auto" => () => ProtoApp.Instance.AddServerAsync(text),
             "sub" => () => ProtoApp.Instance.AddSubscriptionAsync(text),
             "group" => () => ProtoApp.Instance.CreateGroupAsync(text),
             _ => () => ProtoApp.Instance.AddServerAsync(text),
@@ -2821,6 +2992,8 @@ public partial class MainWindow : Window
         if (AboutPop is null) return;
 
         var app = ProtoApp.Instance;
+        if (AboutVersion is not null) AboutVersion.Text = "v" + AppVersionText();
+        if (AboutServiceLib is not null) AboutServiceLib.Text = "ServiceLib · logic ON";
         if (AboutSocks is not null)
             AboutSocks.Text = Loc.TF("SOCKS: 127.0.0.1:{0}", app.SocksPort);
         if (AboutHttp is not null)
@@ -2870,7 +3043,7 @@ public partial class MainWindow : Window
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "https://github.com/wifitldev/v2crackpc/releases/tag/1.1.2",
+                FileName = "https://github.com/wifitldev/v2crackpc/releases/tag/" + AppVersionText(),
                 UseShellExecute = true
             });
         }
@@ -3054,7 +3227,7 @@ public partial class MainWindow : Window
     {
         var app = ProtoApp.Instance;
         var sb = new StringBuilder();
-        sb.AppendLine("v2crackN-UiProto autotest · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+        sb.AppendLine("v2crackN autotest · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
         sb.AppendLine("exe: " + Environment.ProcessPath);
         sb.AppendLine("base: " + PayloadPrep.BaseDir);
         var failed = 0;
@@ -3253,7 +3426,7 @@ public partial class MainWindow : Window
                 @"Software\Microsoft\Windows\CurrentVersion\Run");
             if (key is null) return false;
 
-            var exe = Path.GetFileName(Environment.ProcessPath ?? "v2crackN-UiProto.exe");
+            var exe = Path.GetFileName(Environment.ProcessPath ?? "v2crackN.exe");
             foreach (var name in key.GetValueNames())
             {
                 var data = key.GetValue(name)?.ToString();
@@ -3332,7 +3505,7 @@ public partial class MainWindow : Window
         var http = "GET /connecttest.txt HTTP/1.1\r\n" +
                    "Host: www.msftconnecttest.com\r\n" +
                    "Connection: close\r\n" +
-                   "User-Agent: v2crackN-UiProto\r\n\r\n";
+                   "User-Agent: v2crackN\r\n\r\n";
         await stream.WriteAsync(Encoding.ASCII.GetBytes(http), cts.Token);
 
         var buffer = new byte[4096];
@@ -3431,7 +3604,8 @@ public sealed record ProfileVm(string IndexId, string Name, string Summary, Visi
 
 /// <summary>Группа в дереве Connect: «Server list» (Id="") или подписка/пользовательская группа.</summary>
 public sealed record GroupVm(string Id, string Name, string Kind, int Count,
-                             List<ProfileVm> Items, bool Collapsed, bool Pinned)
+                             List<ProfileVm> Items, bool Collapsed, bool Pinned,
+                             bool IsSub = false)
 {
     private readonly bool _canManage =
         !string.IsNullOrEmpty(Id) && Id != ServiceLib.Global.PermanentSubId;
@@ -3440,6 +3614,12 @@ public sealed record GroupVm(string Id, string Name, string Kind, int Count,
     public Visibility KindVisibility => string.IsNullOrEmpty(Kind) ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ListVisibility => Collapsed ? Visibility.Collapsed : Visibility.Visible;
     public Visibility EmptyVisibility => Count > 0 || Collapsed ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>«⟳ Обновить подписку» — только у настоящих подписок (у обычных групп нет URL).</summary>
+    public Visibility SubActionsVisibility => IsSub ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>«⚡ Пинговать» — у всех групп, кроме «Server list» (его пингует кнопка сверху).</summary>
+    public Visibility GroupPingVisibility => string.IsNullOrEmpty(Id) ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>Hover-панель показывается только у настоящих групп (не у «Server list»).</summary>
     public bool CanPin => !string.IsNullOrEmpty(Id);

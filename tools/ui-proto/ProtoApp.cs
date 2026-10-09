@@ -25,7 +25,7 @@ public sealed record OpResult(bool Success, string Message)
 }
 
 /// <summary>
-/// Слой логики прототипа. Всё берётся из ServiceLib 1.1.2 (v2crackN),
+/// Основной слой логики клиента. Сетевые операции выполняются через ServiceLib,
 /// здесь только склейка: инициализация, connect/disconnect, режим прокси,
 /// настройки, список серверов и роутингов, статистика.
 /// </summary>
@@ -186,6 +186,14 @@ public sealed class ProtoApp
 
         if (!await WaitForPortAsync(SocksPort, 8000))
         {
+            // The core may fail after the system proxy was switched; always restore direct access.
+            try
+            {
+                config.SystemProxyItem.SysProxyType = ESysProxyType.ForcedClear;
+                await SysProxyHandler.UpdateSysProxy(config, false);
+            }
+            catch (Exception ex) { Say("proxy restore error · " + ex.Message); }
+            try { await CoreManager.Instance.CoreStop(); } catch { }
             CoreUp = false;
             Say("порт " + SocksPort + " не поднялся");
             return OpResult.Bad("ядро не подняло порт " + SocksPort);
@@ -367,6 +375,8 @@ public sealed class ProtoApp
         // должно лежать ровно то, что сравнивает меню и читает старт приложения
         theme = theme.Equals("Light", StringComparison.OrdinalIgnoreCase) ? "Light"
               : theme.Equals("FollowSystem", StringComparison.OrdinalIgnoreCase) ? "FollowSystem"
+              : theme.Equals("Console", StringComparison.OrdinalIgnoreCase) ? "Console"
+              : theme.Equals("Aurora", StringComparison.OrdinalIgnoreCase) ? "Aurora"
               : "Dark";
 
         var config = Config;
@@ -518,6 +528,40 @@ public sealed class ProtoApp
             : OpResult.Bad("подписки не обновились");
     }
 
+    /// <summary>
+    /// Обновление одной подписки по SubItem.Id — тот же SubscriptionHandler.UpdateProcess,
+    /// что и в общем обновлении, но только для выбранной группы.
+    /// </summary>
+    public async Task<OpResult> UpdateSubscriptionAsync(string subId)
+    {
+        if (!Initialized)
+            return OpResult.Bad("не инициализировано");
+
+        var config = Config;
+        var sub = (await AppManager.Instance.SubItems())?.FirstOrDefault(t => t.Id == subId);
+        if (sub is null)
+            return OpResult.Bad("подписка не найдена");
+
+        try
+        {
+            await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (_, msg) =>
+            {
+                if (!string.IsNullOrWhiteSpace(msg))
+                    Say(msg.Trim());
+                return Task.CompletedTask;
+            });
+        }
+        catch (Exception ex)
+        {
+            return OpResult.Bad("subscription update failed · " + ex.Message);
+        }
+
+        var count = (await AppManager.Instance.ProfileItems(sub.Id))?.Count ?? 0;
+        return count > 0
+            ? OpResult.Good($"обновлено · серверов: {count}")
+            : OpResult.Bad("серверы не загрузились");
+    }
+
     // ------------------------------------------------------------- speedtest
 
     /// <summary>
@@ -549,6 +593,81 @@ public sealed class ProtoApp
 
     /// <summary>Отмена идущего прогона: все свои фазы (HEAD / ICMP) делят этот CTS.</summary>
     private CancellationTokenSource? _customPingCts;
+
+    /// <summary>
+    /// «via Proxy GET»: полный HTTP GET через локальный speedtest-прокси каждого сервера.
+    /// Core поднимается для выбранных профилей, поэтому замер включает VLESS/REALITY/XHTTP.
+    /// </summary>
+    public async Task PingGetAsync(List<ProfileItem> items)
+    {
+        if (!Initialized || items is null || items.Count == 0)
+            return;
+
+        var cts = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _customPingCts, cts);
+        try { prev?.Cancel(); } catch { }
+
+        ProcessService? ps = null;
+        try
+        {
+            var selecteds = await BuildTestItemsAsync(items);
+            if (selecteds.Count == 0)
+                return;
+
+            ps = await CoreManager.Instance.LoadCoreConfigSpeedtest(selecteds);
+            if (ps is null)
+            {
+                foreach (var it in selecteds)
+                    PingUpdate?.Invoke(it.IndexId ?? "", "-1");
+                return;
+            }
+
+            await Task.Delay(1000, cts.Token);
+            var url = Config.SpeedTestItem.SpeedPingTestUrl;
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, selecteds.Count),
+                CancellationToken = cts.Token,
+            };
+
+            await Parallel.ForEachAsync(selecteds, options, async (it, innerCt) =>
+            {
+                var ms = -1;
+                try
+                {
+                    ms = it.AllowTest ? await GetPingOnceAsync(url, it.Port, innerCt) : -1;
+                }
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // Server did not complete the proxied request.
+                }
+
+                PingUpdate?.Invoke(it.IndexId ?? "", ms.ToString());
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            Say("get ping: " + ex.Message);
+        }
+        finally
+        {
+            if (ps is not null)
+            {
+                try { await ps.StopAsync(); } catch { }
+            }
+
+            if (ReferenceEquals(_customPingCts, cts)) _customPingCts = null;
+            try { cts.Dispose(); } catch { }
+            PingUpdate?.Invoke("", "get ping done");
+        }
+    }
 
     /// <summary>
     /// «via Proxy HEAD»: HTTP HEAD через локальный speedtest-прокси каждого сервера —
@@ -637,6 +756,35 @@ public sealed class ProtoApp
             // ровно одно завершение фазы — счётчик фаз в MainWindow
             PingUpdate?.Invoke("", "head ping done");
         }
+    }
+
+    /// <summary>HTTP GET через socks-прокси сервера: 2 попытки, минимум положительных.</summary>
+    private static async Task<int> GetPingOnceAsync(string url, int port, CancellationToken ct)
+    {
+        using var timeoutCts = new CancellationTokenSource();
+        timeoutCts.CancelAfter(Global.LocalFetch);
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+        var token = linkedCts.Token;
+
+        using var client = new HttpClient(new SocketsHttpHandler
+        {
+            Proxy = new WebProxy($"socks5://{Global.Loopback}:{port}"),
+            UseProxy = true,
+            ConnectTimeout = Global.LocalFetch,
+        });
+
+        var times = new List<int>(2);
+        for (var i = 0; i < 2; i++)
+        {
+            var timer = Stopwatch.StartNew();
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
+            timer.Stop();
+            times.Add((int)timer.Elapsed.TotalMilliseconds);
+            await Task.Delay(100, token);
+        }
+
+        return times.Where(t => t > 0).OrderBy(t => t).DefaultIfEmpty(-1).First();
     }
 
     /// <summary>HTTP HEAD через socks-прокси сервера: 2 попытки, минимум положительных.</summary>
