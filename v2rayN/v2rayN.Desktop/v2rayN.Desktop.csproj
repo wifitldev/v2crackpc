@@ -9,7 +9,8 @@
 		<Product>v2crackN</Product>
 		<AssemblyTitle>v2crackN</AssemblyTitle>
 		<Company>v2crackNG</Company>
-		<Description>v2crackN - a V2Ray/Xray client for Windows, Linux and macOS</Description>
+		<Description>v2crackN - a V2Ray/Xray client for Windows and Linux</Description>
+		<Version>1.2.0</Version>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 		<CETCompat>false</CETCompat>
 	</PropertyGroup>

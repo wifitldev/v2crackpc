@@ -49,7 +49,18 @@ jobs:
         name: ${{ matrix.arch }}
         path: v2rayN-${{ env.Target }}-${{ env.Arch }}
     
-    - name: Get v2rayN-core-bin
+    - name: Add package metadata
+      if: inputs.target == 'linux'
+      run: |
+        cat > "v2rayN-${{ env.Target }}-${{ env.Arch }}/README.txt" <<'EOF'
+        v2crackN Linux portable
+
+        Run ./v2crackN from this directory.
+        User data is stored in ~/.local/share/v2crackN when the install directory is read-only.
+        EOF
+
+    - name: Get runtime bundle for non-Linux targets
+      if: inputs.target != 'linux'
       run: wget -nv -O v2rayN-$Target-$Arch.zip "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/v2rayN-$Target-$Arch.zip"
     
     - name: Package zip archive

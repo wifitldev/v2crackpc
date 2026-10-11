@@ -83,6 +83,29 @@ jobs:
       working-directory: ./v2rayN
       run: dotnet publish ./AmazTool/AmazTool.csproj -c Release -r $RID -p:SelfContained=true -p:PublishTrimmed=true $ExtOpt -o $Output
 
+    - name: Add Linux runtime cores
+      if: inputs.target == 'linux'
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ matrix.arch }}" in
+          x64) CORE_ARCH=64 ;;
+          arm64) CORE_ARCH=arm64 ;;
+          *) echo "Unsupported Linux architecture: ${{ matrix.arch }}"; exit 1 ;;
+        esac
+        tmp="$(mktemp -d)"
+        curl -fL "https://github.com/2dust/v2rayN-core-bin/raw/refs/heads/master/v2rayN-linux-${CORE_ARCH}.zip" -o "$tmp/core.zip"
+        unzip -q "$tmp/core.zip" -d "$tmp/core"
+        if [[ -d "$tmp/core/bin" ]]; then
+          cp -a "$tmp/core/bin/." "${{ matrix.arch }}/bin/"
+        else
+          mkdir -p "${{ matrix.arch }}/bin"
+          cp -a "$tmp/core/." "${{ matrix.arch }}/bin/"
+        fi
+        rm -rf "$tmp"
+        test -f "${{ matrix.arch }}/bin/xray/xray" -o -f "${{ matrix.arch }}/bin/xray"
+        test -f "${{ matrix.arch }}/bin/sing_box/sing-box" -o -f "${{ matrix.arch }}/bin/sing-box"
+
     - name: Remove Debug Symbols
       shell: bash
       run: |
