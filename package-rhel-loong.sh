@@ -10,7 +10,7 @@ SING_VER="${SING_VER:-}"
 
 MIN_KERNEL="6.12"
 PKGROOT="v2rayN-publish"
-PROJECT_HINT="v2rayN.Desktop/v2rayN.Desktop.csproj"
+PROJECT_HINT="${PROJECT_HINT:-v2rayN.Desktop/v2rayN.Desktop.csproj}"
 RPM_TOPDIR="${HOME}/rpmbuild"
 DOTNET_LOONGARCH_VERSION="10.0.111"
 DOTNET_LOONGARCH_TAG="v10.0.111-loongarch64"
@@ -536,7 +536,7 @@ cp -a * %{buildroot}/opt/v2rayN/
 
 find %{buildroot}/opt/v2rayN -type d -exec chmod 0755 {} +
 find %{buildroot}/opt/v2rayN -type f -exec chmod 0644 {} +
-[ -f %{buildroot}/opt/v2rayN/v2rayN ] && chmod 0755 %{buildroot}/opt/v2rayN/v2rayN || :
+[ -f %{buildroot}/opt/v2rayN/v2crackN ] && chmod 0755 %{buildroot}/opt/v2rayN/v2crackN || :
 
 install -dm0755 %{buildroot}%{_bindir}
 install -m0755 /dev/stdin %{buildroot}%{_bindir}/v2rayn << 'EOF'
@@ -544,9 +544,9 @@ install -m0755 /dev/stdin %{buildroot}%{_bindir}/v2rayn << 'EOF'
 set -euo pipefail
 DIR="/opt/v2rayN"
 
-if [[ -x "$DIR/v2rayN" ]]; then exec "$DIR/v2rayN" "$@"; fi
+if [[ -x "$DIR/v2crackN" ]]; then exec "$DIR/v2crackN" "$@"; fi
 
-for dll in v2rayN.Desktop.dll v2rayN.dll; do
+for dll in v2crackN.dll v2rayN.Desktop.dll v2rayN.dll; do
   if [[ -f "$DIR/$dll" ]]; then exec /usr/bin/dotnet "$DIR/$dll" "$@"; fi
 done
 

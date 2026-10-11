@@ -10,7 +10,7 @@ SING_VER="${SING_VER:-}"
 
 MIN_KERNEL="5.10"
 PKGROOT="v2rayN-publish"
-PROJECT_HINT="v2rayN.Desktop/v2rayN.Desktop.csproj"
+PROJECT_HINT="${PROJECT_HINT:-v2rayN.Desktop/v2rayN.Desktop.csproj}"
 OUTPUT_DIR="${HOME}/debbuild"
 DOTNET_RISCV_VERSION="10.0.111"
 DOTNET_RISCV_BASE="https://github.com/xujiegb/dotnet-riscv/releases/download"
@@ -501,11 +501,11 @@ set -euo pipefail
 DIR="/opt/v2rayN"
 cd "$DIR"
 
-if [[ -x "$DIR/v2rayN" ]]; then
-  exec "$DIR/v2rayN" "$@"
+if [[ -x "$DIR/v2crackN" ]]; then
+  exec "$DIR/v2crackN" "$@"
 fi
 
-for dll in v2rayN.Desktop.dll v2rayN.dll; do
+for dll in v2crackN.dll v2rayN.Desktop.dll v2rayN.dll; do
   if [[ -f "$DIR/$dll" ]]; then
     exec /usr/bin/dotnet "$DIR/$dll" "$@"
   fi
@@ -660,7 +660,7 @@ EOF
 
   find "$stage/opt/v2rayN" -type d -exec chmod 0755 {} +
   find "$stage/opt/v2rayN" -type f -exec chmod 0644 {} +
-  [[ -f "$stage/opt/v2rayN/v2rayN" ]] && chmod 0755 "$stage/opt/v2rayN/v2rayN" || true
+  [[ -f "$stage/opt/v2rayN/v2crackN" ]] && chmod 0755 "$stage/opt/v2rayN/v2crackN" || true
 
   deb_out="$OUTPUT_DIR/v2rayn_${VERSION}_${deb_arch}.deb"
   dpkg-deb --root-owner-group --build "$stage" "$deb_out"
