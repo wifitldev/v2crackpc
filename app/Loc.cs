@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -475,6 +475,9 @@ public static class Loc
         ["Folder"] = ["Папка", "文件夹", "資料夾", "Dossier", "Mappa", "Folder", "Qovluq", "پوشه"],
 
         // ---------------------------------------------------------- тост
+        ["Connection mode changed"] = ["Режим подключения изменён", "连接模式已更改", "連線模式已變更", "Mode de connexion modifié", "A kapcsolati mód megváltozott", "Mode koneksi diubah", "Qoşulma rejimi dəyişdi", "حالت اتصال تغییر کرد"],
+        ["System proxy settings have been updated"] = ["Настройки системного прокси обновлены", "系统代理设置已更新", "系統代理設定已更新", "Les paramètres du proxy système ont été mis à jour", "A rendszerproxy beállításai frissültek", "Pengaturan proksi sistem diperbarui", "Sistem proksisi ayarları yeniləndi", "تنظیمات پروکسی سیستم به‌روزرسانی شد"],
+        ["The selected mode will apply when you connect"] = ["Выбранный режим применится при подключении", "所选模式将在连接时生效", "所選模式將於連線時生效", "Le mode sélectionné sera appliqué à la connexion", "A kiválasztott mód csatlakozáskor lép érvénybe", "Mode yang dipilih berlaku saat tersambung", "Seçilmiş rejim qoşulduqda tətbiq olunacaq", "حالت انتخاب‌شده هنگام اتصال اعمال می‌شود"],
         ["Reconnect to switch mode"] =
             ["Переподключитесь, чтобы сменить режим", "重新连接以切换模式", "重新連線以切換模式",
              "Reconnectez pour changer de mode", "Csatlakozzon újra a mód váltásához",
@@ -503,7 +506,7 @@ public static class Loc
         ["log view cleared (files in guiLogs are untouched)"] = ["журнал очищен (файлы в guiLogs не тронуты)", "日志视图已清除（guiLogs 中的文件未改动）", "日誌檢視已清除（guiLogs 中的檔案未更動）", "journal vidé (les fichiers guiLogs sont intacts)", "napló törölve (a guiLogs fájlok érintetlenek)", "tampilan log dibersihkan (file guiLogs tidak tersentuh)", "jurnal təmizləndi (guiLogs faylları dəyişməyib)", "نمایش گزارش پاک شد (فایل‌های guiLogs دست نخورده‌اند)"],
         ["open folder failed: "] = ["не удалось открыть папку: ", "无法打开文件夹：", "無法開啟資料夾：", "échec de l'ouverture du dossier : ", "mappa megnyitása sikertelen: ", "gagal membuka folder: ", "qovluq açılmadı: ", "پوشه باز نشد: "],
         ["core stopped unexpectedly"] = ["ядро остановлено неожиданно", "内核意外停止", "核心意外停止", "noyau arrêté inopinément", "mag váratlanul leállt", "inti berhenti tiba-tiba", "nüvə gözlənilməz dayandı", "هسته به طور غیرمنتظره متوقف شد"],
-        ["port must be 1024-65535"] = ["порт должен быть 1024-65535", "端口必须为 1024-65535", "埠必須為 1024-65535", "le port doit être 1024-65535", "a portnak 1024-65535 kell lennie", "port harus 1024-65535", "port 1024-65535 olmalıdır", "پورت باید 1024-65535 باشد"],
+        ["port must be 1024-65514"] = ["порт должен быть 1024-65514", "端口必须为 1024-65514", "埠必須為 1024-65514", "le port doit être 1024-65514", "a portnak 1024-65514 kell lennie", "port harus 1024-65514", "port 1024-65514 olmalıdır", "پورت باید 1024-65514 باشد"],
         ["clipboard unavailable"] = ["буфер обмена недоступен", "剪贴板不可用", "剪貼簿無法使用", "presse-papiers indisponible", "vágólap nem érhető el", "clipboard tidak tersedia", "mübadilə buferi əlçatmazdır", "کلیپ‌بورد در دسترس نیست"],
         ["select a preset first"] = ["сначала выберите пресет", "请先选择预设", "請先選擇預設", "sélectionnez d'abord un préréglage", "előbb válasszon előbeállítást", "pilih prasetel terlebih dahulu", "əvvəl preset seçin", "ابتدا یک پریست انتخاب کنید"],
         ["AUTOTEST: PASS — autotest.log"] = ["АВТОТЕСТ: PASS — autotest.log", "自动测试：PASS — autotest.log", "自動測試：PASS — autotest.log", "AUTOTEST : PASS — autotest.log", "AUTOTEST: PASS — autotest.log", "AUTOTEST: PASS — autotest.log", "AVTO TEST: PASS — autotest.log", "آزمایش خودکار: PASS — autotest.log"],

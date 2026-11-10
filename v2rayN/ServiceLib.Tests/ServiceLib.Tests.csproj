@@ -13,6 +13,18 @@
 
     <ItemGroup>
         <ProjectReference Include="..\ServiceLib\ServiceLib.csproj" />
+        <Compile Include="..\..\app\PortRules.cs" Link="App\PortRules.cs" />
+        <Compile Include="..\..\app\ConnectionGate.cs" Link="App\ConnectionGate.cs" />
+        <Compile Include="..\..\app\PendingConnection.cs" Link="App\PendingConnection.cs" />
+        <Compile Include="..\..\app\LocalPortProbe.cs" Link="App\LocalPortProbe.cs" />
+        <Compile Include="..\..\app\PortRollback.cs" Link="App\PortRollback.cs" />
+        <Compile Include="..\..\app\PortStateFile.cs" Link="App\PortStateFile.cs" />
+        <Compile Include="..\..\app\LogNotification.cs" Link="App\LogNotification.cs" />
+        <Compile Include="..\..\app\ProxyModeRules.cs" Link="App\ProxyModeRules.cs" />
+        <Compile Include="..\..\app\PingPhases.cs" Link="App\PingPhases.cs" />
+        <Compile Include="..\..\tools\installer\PayloadStaging.cs" Link="Installer\PayloadStaging.cs" />
+        <Compile Include="..\..\tools\installer\PayloadCommit.cs" Link="Installer\PayloadCommit.cs" />
+        <Compile Include="..\..\tools\installer\VersionGuard.cs" Link="Installer\VersionGuard.cs" />
     </ItemGroup>
 
     <ItemGroup>

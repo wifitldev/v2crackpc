@@ -1,3 +1,4 @@
+using PingPhase = UiProto.PingPhases.Phase;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
@@ -42,6 +43,9 @@ public partial class MainWindow : Window
     private DispatcherTimer? _filterDebounce;
 
     private bool _initDone;
+    private bool _startupReady;
+    private bool _initializationFailed;
+    private Task<bool>? _initializationTask;
     private bool _connected;
     private bool _busy;
     private bool _syncing;
@@ -49,7 +53,7 @@ public partial class MainWindow : Window
     private bool _exitDone;
     private bool _forceExit;
     private TrayIcon? _tray;
-    private bool _pendingConnect;
+    private readonly PendingConnection _pendingConnect = new();
     private bool _startTunnel;
     private bool _autotest;
     private bool _testPing;
@@ -86,6 +90,7 @@ public partial class MainWindow : Window
     private string? _busyText;
     private int _seconds;
     private int _probeFails;
+    private long _connectionRevision;
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
@@ -166,7 +171,7 @@ public partial class MainWindow : Window
             }
             else if (a == "--connected")
             {
-                _pendingConnect = true;
+                _pendingConnect.Request();
             }
             else if (a == "--mode=tunnel")
             {
@@ -273,7 +278,8 @@ public partial class MainWindow : Window
         bool ok;
         try
         {
-            ok = await Task.Run(() => app.InitAsync());
+            _initializationTask = Task.Run(() => app.InitAsync());
+            ok = await _initializationTask;
         }
         catch (Exception ex)
         {
@@ -281,8 +287,13 @@ public partial class MainWindow : Window
             OnAppLog("init error: " + ex.Message);
         }
 
+        if (_exitDone) return;
+
         if (!ok)
         {
+            _initializationFailed = true;
+            _pendingConnect.Cancel();
+            PowerBtn.IsEnabled = false;
             PaintError(Loc.T("ServiceLib init failed — see guiLogs"));
             if (_autotest)
             {
@@ -306,6 +317,7 @@ public partial class MainWindow : Window
             RefreshNodeCardAsync(),
             RefreshServersTreeAsync(),
             LoadRoutingsAsync());
+        if (_exitDone) return;
         PaintIdle();
 
         BarLog.Text = Loc.TF("ready · socks 127.0.0.1:{0}", app.SocksPort);
@@ -319,7 +331,7 @@ public partial class MainWindow : Window
             info.AppendLine(Loc.TF("SOCKS: 127.0.0.1:{0}", app.SocksPort));
             info.AppendLine(Loc.TF("HTTP: 127.0.0.1:{0}", app.HttpPort));
             InfoLink.ToolTip = info.ToString();
-            InfoLink.MouseLeftButtonDown += InfoLink_Click;
+            InfoLink.MouseLeftButtonUp += InfoLink_Click;
         }
 
         // --theme=Light / --menu=theme: предпросмотр для скриншотов, в конфиг не пишется
@@ -486,7 +498,8 @@ public partial class MainWindow : Window
             ShowModeToast("Reconnect to apply the mode",
                           "Tunnel and Proxy switch only after reconnecting", sticky: true);
 
-        if (_pendingConnect)
+        _startupReady = true;
+        if (!_exitDone && _pendingConnect.Take() && !_connected && !_busy)
             await ConnectUiAsync();
     }
 
@@ -806,23 +819,55 @@ public partial class MainWindow : Window
 
     private async Task ApplyModeAsync(bool tunnel)
     {
-        var changed = _tunnelUi != tunnel;
+        if (_exitDone) return;
+        if (_busy)
+        {
+            SetMode(ProtoApp.Instance.TunnelMode);
+            SyncModeToggles(ProtoApp.Instance.TunnelMode);
+            return;
+        }
+        var modeChanged = tunnel != ProtoApp.Instance.TunnelMode;
         SetMode(tunnel);
         if (!_initDone) return;
 
+        _busy = true;
+        _connectionRevision++;
+        PowerBtn.IsEnabled = false;
         try
         {
-            await ProtoApp.Instance.SetTunnelModeAsync(tunnel);
-            SyncModeToggles(tunnel);
+            var result = await ProtoApp.Instance.SetTunnelModeAsync(tunnel);
+            if (_exitDone) return;
+            if (!result.Success)
+            {
+                SetMode(ProtoApp.Instance.TunnelMode);
+                SyncModeToggles(ProtoApp.Instance.TunnelMode);
+                if (_connected && !ProtoApp.Instance.CoreUp) PaintError(result.Message);
+                else BarLog.Text = result.Message;
+                return;
+            }
+            SetMode(ProtoApp.Instance.TunnelMode);
+            SyncModeToggles(ProtoApp.Instance.TunnelMode);
+            if (modeChanged)
+                ShowModeToast("Connection mode changed", ProtoApp.Instance.CoreUp
+                    ? "System proxy settings have been updated"
+                    : "The selected mode will apply when you connect");
         }
         catch (Exception ex)
         {
-            BarLog.Text = "error: " + ex.Message;
+            if (!_exitDone)
+            {
+                SetMode(ProtoApp.Instance.TunnelMode);
+                SyncModeToggles(ProtoApp.Instance.TunnelMode);
+                BarLog.Text = "error: " + ex.Message;
+            }
+            return;
+        }
+        finally
+        {
+            _busy = false;
+            if (!_exitDone) PowerBtn.IsEnabled = true;
         }
 
-        if (changed)
-            ShowModeToast("Reconnect to apply the mode",
-                          "Tunnel and Proxy switch only after reconnecting");
     }
 
     private void SyncModeToggles(bool tunnel)
@@ -1010,12 +1055,13 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task ConnectUiAsync()
+    internal async Task ConnectUiAsync()
     {
+        if (_exitDone || _connected || _initializationFailed) return;
         var app = ProtoApp.Instance;
-        if (!app.Initialized)
+        if (!_startupReady || !app.Initialized)
         {
-            _pendingConnect = true;
+            _pendingConnect.Request();
             return;
         }
 
@@ -1026,6 +1072,7 @@ public partial class MainWindow : Window
         try
         {
             var r = await app.ConnectAsync();
+            if (_exitDone) return;
             if (r.Success)
             {
                 _probeFails = 0;
@@ -1038,19 +1085,21 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            PaintError(ex.Message);
+            if (!_exitDone) PaintError(ex.Message);
         }
         finally
         {
             _busy = false;
-            PowerBtn.IsEnabled = true;
+            if (!_exitDone) PowerBtn.IsEnabled = true;
         }
     }
 
-    private async Task DisconnectUiAsync()
+    internal async Task DisconnectUiAsync()
     {
+        // A disconnect during startup cancels an earlier queued connect.
+        _pendingConnect.Cancel();
         var app = ProtoApp.Instance;
-        if (!app.Initialized || _busy) return;
+        if (_exitDone || !_startupReady || !app.Initialized || _busy) return;
 
         _busy = true;
         PowerBtn.IsEnabled = false;
@@ -1058,24 +1107,25 @@ public partial class MainWindow : Window
         try
         {
             var r = await app.DisconnectAsync();
+            if (_exitDone) return;
             if (r.Success) PaintIdle();
             else PaintError(r.Message);
         }
         catch (Exception ex)
         {
-            PaintError(ex.Message);
+            if (!_exitDone) PaintError(ex.Message);
         }
         finally
         {
             _busy = false;
-            PowerBtn.IsEnabled = true;
+            if (!_exitDone) PowerBtn.IsEnabled = true;
         }
     }
 
     /// <summary>Выполняет операцию ServiceLib, показывая Reconnecting при активном соединении. true = успех.</summary>
     private async Task<bool> RunOpAsync(Func<Task<OpResult>> op)
     {
-        if (_busy) return false;
+        if (_busy || _exitDone) return false;
         _busy = true;
         PowerBtn.IsEnabled = false;
         try
@@ -1084,6 +1134,7 @@ public partial class MainWindow : Window
                 PaintBusy("Reconnecting…");
 
             var r = await op();
+            if (_exitDone) return false;
             if (!r.Success)
             {
                 PaintError(r.Message);
@@ -1103,20 +1154,23 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            PaintError(ex.Message);
+            if (!_exitDone) PaintError(ex.Message);
             return false;
         }
         finally
         {
             _busy = false;
-            PowerBtn.IsEnabled = true;
+            if (!_exitDone) PowerBtn.IsEnabled = true;
         }
     }
 
     // ------------------------------------------------------------ paint UI
 
+    private bool _showingConnectionError;
+
     private void PaintConnected()
     {
+        _showingConnectionError = false;
         _connected = true;
         _busyText = null;
         var accent = (Brush)FindResource("Ok");
@@ -1140,6 +1194,7 @@ public partial class MainWindow : Window
 
     private void PaintIdle()
     {
+        _showingConnectionError = false;
         _connected = false;
         _busyText = null;
         _timer.Stop();
@@ -1162,6 +1217,7 @@ public partial class MainWindow : Window
 
     private void PaintBusy(string text)
     {
+        _connectionRevision++;
         var accent = (Brush)FindResource("Accent");
         var label = Loc.T(text);
         _busyText = text;
@@ -1179,9 +1235,11 @@ public partial class MainWindow : Window
 
     private void PaintError(string message)
     {
-        _connected = false;
+        // An operation can fail while the previously running core is still active.
+        _connected = ProtoApp.Instance.CoreUp;
+        _showingConnectionError = true;
         _busyText = null;
-        _timer.Stop();
+        if (!_connected) _timer.Stop();
 
         var text2 = (Brush)FindResource("Text2");
 
@@ -1209,14 +1267,18 @@ public partial class MainWindow : Window
         if (!_connected) return;
 
         _seconds++;
-        TimerText.Text = TimeSpan.FromSeconds(_seconds).ToString(@"hh\:mm\:ss");
+        if (!_showingConnectionError)
+            TimerText.Text = TimeSpan.FromSeconds(_seconds).ToString(@"hh\:mm\:ss");
 
-        if (_probeBusy || _seconds % 2 != 0) return;
+        if (_busy || _probeBusy || _seconds % 2 != 0) return;
 
         _probeBusy = true;
+        var revision = _connectionRevision;
         try
         {
-            if (await ProtoApp.Instance.IsPortAliveAsync())
+            var alive = CoreManager.Instance.IsCoreRunning && await ProtoApp.Instance.IsPortAliveAsync();
+            if (revision != _connectionRevision || _busy || !_connected || _exitDone) return;
+            if (alive)
             {
                 _probeFails = 0;
             }
@@ -1238,19 +1300,35 @@ public partial class MainWindow : Window
 
     private async Task HandleCoreDeathAsync()
     {
+        if (_busy || _exitDone) return;
+        _busy = true;
+        _connectionRevision++;
+        PowerBtn.IsEnabled = false;
         try
         {
-            await ProtoApp.Instance.DisconnectAsync();
-        }
-        catch
-        {
-            // best effort - at least reflect the state in UI
-        }
+            string? cleanupError = null;
+            try
+            {
+                var result = await ProtoApp.Instance.DisconnectAsync();
+                if (!result.Success) cleanupError = result.Message;
+            }
+            catch (Exception ex)
+            {
+                cleanupError = ex.Message;
+            }
 
-        PaintIdle();
-        TimerText.Text = Loc.T("core stopped");
-        TimerText.Foreground = ErrorBrush;
-        BarLog.Text = Loc.T("core stopped unexpectedly");
+            if (_exitDone) return;
+            PaintIdle();
+            TimerText.Text = Loc.T("core stopped");
+            TimerText.Foreground = ErrorBrush;
+            BarLog.Text = Loc.T("core stopped unexpectedly") +
+                (cleanupError is null ? "" : " · " + cleanupError);
+        }
+        finally
+        {
+            _busy = false;
+            if (!_exitDone) PowerBtn.IsEnabled = true;
+        }
     }
 
     // ============================================================ settings
@@ -1290,13 +1368,7 @@ public partial class MainWindow : Window
             {
                 case "tunnel":
                 case "sysproxy":
-                    var wasOn = app.TunnelMode;
-                    await app.SetTunnelModeAsync(on);
-                    SyncModeToggles(app.TunnelMode);
-                    SetMode(app.TunnelMode);
-                    if (wasOn != app.TunnelMode)
-                        ShowModeToast("Reconnect to apply the mode",
-                                      "Tunnel and Proxy switch only after reconnecting");
+                    await ApplyModeAsync(on);
                     break;
 
                 case "autorun":
@@ -1350,10 +1422,10 @@ public partial class MainWindow : Window
         if (!_initDone) return;
 
         var app = ProtoApp.Instance;
-        if (!int.TryParse(PortBox.Text?.Trim(), out var port) || port is < 1024 or > 65535)
+        if (!int.TryParse(PortBox.Text?.Trim(), out var port) || !PortRules.IsValidSocksPort(port))
         {
             PortBox.Text = app.SocksPort.ToString();
-            BarLog.Text = Loc.T("port must be 1024-65535");
+            BarLog.Text = Loc.T("port must be 1024-65514");
             return;
         }
 
@@ -1676,27 +1748,11 @@ public partial class MainWindow : Window
     /// Виды фаз пинга прототипа: три фазы ServiceLib (TCP → реальный → UDP) плюс
     /// свои HEAD и ICMP — набор зависит от выбора в настройках (как в Happ).
     /// </summary>
-    private enum PingPhase { Tcping, Realping, UdpTest, HttpHead, Icmp }
+    // PingPhase enum moved to PingPhases.cs (PingPhases.Phase); alias at file top.
 
     /// <summary>Фазы прогона и порядок показа в строке по выбранному способу пинга.</summary>
-    private static PingPhase[] PhasesFor(string method) => method switch
-    {
-        "get" => [PingPhase.Realping],
-        "head" => [PingPhase.HttpHead],
-        "tcp" => [PingPhase.Tcping],
-        "icmp" => [PingPhase.Icmp],
-        _ => [PingPhase.Tcping, PingPhase.Realping, PingPhase.UdpTest],
-    };
-
-    /// <summary>Порядок показа в строке: настоящий пинг через сервер важнее прямого TCP.</summary>
-    private static PingPhase[] DisplayFor(string method) => method switch
-    {
-        "get" => [PingPhase.Realping],
-        "head" => [PingPhase.HttpHead],
-        "tcp" => [PingPhase.Tcping],
-        "icmp" => [PingPhase.Icmp],
-        _ => [PingPhase.Realping, PingPhase.Tcping, PingPhase.UdpTest],
-    };
+    private static PingPhase[] PhasesFor(string method) => PingPhases.PhasesFor(method);
+    private static PingPhase[] DisplayFor(string method) => PingPhases.DisplayFor(method);
 
     /// <summary>Снимок выбора на момент прогона — настройку можно не бояться менять в пути.</summary>
     private PingPhase[] _runPhases = PhasesFor("mixed");
@@ -2077,19 +2133,9 @@ public partial class MainWindow : Window
         if (!_pingPhaseValues.TryGetValue(indexId, out var map) || map.Count == 0)
             return;
 
-        var found = false;
-        var ms = -1;
-        foreach (var ph in _runDisplay)
-        {
-            if (map.TryGetValue(ph, out var v) && v > 0)
-            {
-                ms = v;
-                found = true;
-                break;
-            }
-        }
+        var ms = PingPhases.BestResult(map, _runDisplay);
 
-        if (!found)
+        if (ms < 0)
         {
             // отказы приходят от каждой фазы: до конца всех фаз значение ещё может
             // появиться; на финале (часть фаз могла не ответить) — честное «n/a»
@@ -3192,7 +3238,7 @@ public partial class MainWindow : Window
 
         // с активным прокси/туннелем крестик прячет окно в трей,
         // реальный выход — только «Выйти» в меню трея
-        if (!_forceExit && (ProtoApp.Instance.TunnelMode || ProtoApp.Instance.CoreUp))
+        if (!_forceExit && _tray?.IsAvailable == true && ProtoApp.Instance.CoreUp)
         {
             e.Cancel = true;
             WindowState = WindowState.Minimized;
@@ -3211,14 +3257,29 @@ public partial class MainWindow : Window
         _timer.Stop();
         try
         {
-            await ProtoApp.Instance.ExitAsync();
+            if (_initializationTask is not null)
+            {
+                try { await _initializationTask; }
+                catch { /* initialization failure must not prevent shutdown */ }
+            }
+            var result = await ProtoApp.Instance.ExitAsync();
+            if (!result.Success)
+                ShowExitWarning(result.Message);
         }
-        catch
+        catch (Exception ex)
         {
-            // still close the window
+            ShowExitWarning("Ошибка завершения работы: " + ex.Message);
         }
 
         Close();
+    }
+
+    private void ShowExitWarning(string message)
+    {
+        if (!IsVisible) Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+        MessageBox.Show(this, message, "v2crackN", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     // ============================================================== autotest

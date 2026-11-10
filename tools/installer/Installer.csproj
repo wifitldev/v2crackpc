@@ -12,7 +12,7 @@
     <AssemblyName>v2crackN-Installer</AssemblyName>
     <AssemblyTitle>v2crackN Installer</AssemblyTitle>
     <Product>v2crackN</Product>
-    <ApplicationIcon>$(MSBuildProjectDirectory)\..\..\v2rayN\v2rayN\Resources\v2rayN.ico</ApplicationIcon>
+    <ApplicationIcon>$(MSBuildProjectDirectory)\..\..\app\v2crackN.ico</ApplicationIcon>
   </PropertyGroup>
   <Target Name="RequirePayload" BeforeTargets="PrepareForBuild">
     <Error Condition="'$(ZipPath)' == ''" Text="ZipPath is required. Build the installer through tools\pack-ui-proto.ps1 -Installer." />

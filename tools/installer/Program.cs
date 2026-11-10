@@ -20,12 +20,19 @@ internal static class Program
     private const string UninstallKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\v2crackN";
     private static readonly string UninstallScript = Path.Combine(InstallDir, "uninstall.ps1");
     private static readonly string AppVersion =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "1.0.0";
 
     [STAThread]
     private static int Main(string[] args)
     {
         ApplicationConfiguration.Initialize();
+        using var installerMutex = new Mutex(true, @"Local\v2crackN.Installer", out var acquired);
+        if (!acquired)
+        {
+            if (!args.Any(a => a.Equals("--install", StringComparison.OrdinalIgnoreCase) || a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase)))
+                MessageBox.Show("Установщик v2crackN уже запущен.", AppName, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return 1;
+        }
         if (args.Any(a => a.Equals("--install", StringComparison.OrdinalIgnoreCase)))
         {
             var silent = new InstallerForm();
@@ -33,8 +40,8 @@ internal static class Program
         }
         if (args.Any(a => a.Equals("--uninstall", StringComparison.OrdinalIgnoreCase)))
         {
-            InstallerForm.SilentUninstall();
-            return 0;
+            try { InstallerForm.SilentUninstall(); return 0; }
+            catch { return 1; }
         }
         Application.Run(new InstallerForm());
         return 0;
@@ -110,25 +117,49 @@ internal static class Program
             _remove.Enabled = installed;
             var present = ReadInstalledVersion();
             _status.Text = installed
-                ? "Установлено: v" + present + ". Готово к обновлению или удалению."
+                ? (string.IsNullOrWhiteSpace(present) ? "Версия установленного приложения неизвестна." : "Установлено: v" + present + ".") + " Готово к обновлению или удалению."
                 : "Выберите параметры и нажмите «Установить».";
+        }
+
+        private bool _busy;
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (_busy && e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                _status.Text = "Дождитесь завершения операции.";
+            }
+            base.OnFormClosing(e);
         }
 
         private async void RunOperation(string operation, bool replaceExisting)
         {
             SetBusy(true, operation + "…");
+            var closeAfterOperation = false;
             try
             {
-                await Task.Run(() => InstallCore(replaceExisting, _desktop.Checked, _startMenu.Checked));
+                var desktop = _desktop.Checked;
+                var startMenu = _startMenu.Checked;
+                await Task.Run(() => InstallCore(replaceExisting, desktop, startMenu));
                 _status.Text = operation + " завершена. Добавлено в «Приложения и возможности» Windows.";
-                Process.Start(new ProcessStartInfo(AppExe) { WorkingDirectory = InstallDir });
-                Close();
+                try
+                {
+                    Process.Start(new ProcessStartInfo(AppExe) { WorkingDirectory = InstallDir });
+                }
+                catch (Exception launchError)
+                {
+                    _status.Text = operation + " завершена, но запустить приложение не удалось: " + launchError.Message;
+                    return;
+                }
+                closeAfterOperation = true;
             }
             catch (Exception ex)
             {
                 _status.Text = "Ошибка: " + ex.Message;
             }
             finally { SetBusy(false, _status.Text); }
+            if (closeAfterOperation) Close();
         }
 
         /// <summary>Тихая установка для автообновления и автоматизации: installer.exe --install.</summary>
@@ -143,17 +174,23 @@ internal static class Program
         }
 
         /// <summary>Пользовательские данные внутри папки установки — их не трогаем при обновлении и удалении.</summary>
-        private static readonly string[] UserItems = { "guiConfigs", "proto-settings.json", "payload-state.json" };
+        private static readonly string[] UserItems = { "guiConfigs", "guiBackups", "guiLogs", "guiTemps", "binConfigs", "proto-settings.json", "payload-state.json" };
+
+        private static bool IsUserDataPath(string path)
+        {
+            var first = path.Replace('\\', '/').Split('/')[0];
+            return UserItems.Contains(first, StringComparer.OrdinalIgnoreCase);
+        }
 
         /// <summary>Удаляет файлы приложения, оставляя настройки, подписки и локальную БД.</summary>
         private static void CleanInstallDir()
         {
             if (!Directory.Exists(InstallDir)) return;
-            foreach (var entry in Directory.EnumerateFileSystemEntries(InstallDir))
+            // Only remove files we own. Unknown files and directories may be user data.
+            foreach (var name in new[] { "v2crackN.exe", "README.txt", "uninstall.ps1" })
             {
-                if (UserItems.Contains(Path.GetFileName(entry), StringComparer.OrdinalIgnoreCase)) continue;
-                try { Directory.Delete(entry, true); }
-                catch { try { File.Delete(entry); } catch { } }
+                var path = Path.Combine(InstallDir, name);
+                if (File.Exists(path)) File.Delete(path);
             }
         }
 
@@ -161,38 +198,49 @@ internal static class Program
         public static void SilentUninstall()
         {
             StopRunningApp();
+            CleanInstallDir();
             DeleteShortcut(DesktopShortcut);
             DeleteShortcut(StartMenuShortcut);
             RemoveFromWindows();
-            CleanInstallDir();
         }
 
         private void InstallCore(bool replaceExisting, bool desktop, bool startMenu)
         {
+            if (File.Exists(AppExe) && VersionGuard.IsDowngrade(ReadInstalledVersion(), AppVersion))
+                throw new InvalidOperationException("Установлена более новая версия v2crackN. Используйте её установщик, чтобы не потерять совместимость настроек.");
             StopRunningApp();
-            if (replaceExisting) CleanInstallDir();
+            // Overlay only packaged files; preserve existing backups and unknown user files.
             Directory.CreateDirectory(InstallDir);
             using var payload = Assembly.GetExecutingAssembly().GetManifestResourceStream("payload.zip")
                 ?? throw new InvalidOperationException("В установщике отсутствует пакет приложения.");
             using var zip = new ZipArchive(payload, ZipArchiveMode.Read);
-            var entries = zip.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
-            var total = Math.Max(1, entries.Count);
-            for (var i = 0; i < entries.Count; i++)
+            var staging = Path.Combine(Path.GetTempPath(), "v2crackN-install-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(staging);
+            try
             {
-                var entry = entries[i];
-                var destination = Path.GetFullPath(Path.Combine(InstallDir, entry.FullName));
-                if (!destination.StartsWith(Path.GetFullPath(InstallDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException("Некорректный путь в пакете.");
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                entry.ExtractToFile(destination, true);
-                ReportProgress((i + 1) * 100 / total, "Распаковка: " + entry.FullName);
+                var files = PayloadStaging.Extract(zip, staging);
+                PayloadStaging.ValidateRequiredFiles(files);
+                StopRunningApp();
+                PayloadCommit.Apply(staging, InstallDir, files,
+                    (count, file) => ReportProgress(count * 100 / files.Count, "Установка: " + file));
             }
-            if (desktop) CreateShortcut(DesktopShortcut);
-            else DeleteShortcut(DesktopShortcut);
-            if (startMenu) CreateShortcut(StartMenuShortcut);
-            else DeleteShortcut(StartMenuShortcut);
-            WriteUninstallScript();
-            RegisterInWindows();
+            finally
+            {
+                try { Directory.Delete(staging, true); } catch { /* temporary files only */ }
+            }
+            try
+            {
+                if (desktop) CreateShortcut(DesktopShortcut);
+                else DeleteShortcut(DesktopShortcut);
+                if (startMenu) CreateShortcut(StartMenuShortcut);
+                else DeleteShortcut(StartMenuShortcut);
+                WriteUninstallScript();
+                RegisterInWindows();
+            }
+            catch (Exception error)
+            {
+                throw new InvalidOperationException("Файлы программы установлены, но настройку ярлыков или регистрации Windows завершить не удалось. Повторите установку. Причина: " + error.Message, error);
+            }
         }
 
         private void ReportProgress(int percent, string file)
@@ -212,10 +260,10 @@ internal static class Program
             try
             {
                 StopRunningApp();
+                CleanInstallDir();
                 DeleteShortcut(DesktopShortcut);
                 DeleteShortcut(StartMenuShortcut);
                 RemoveFromWindows();
-                CleanInstallDir();
                 _status.Text = "Приложение удалено. Запись в «Приложениях Windows» убрана.";
                 _install.Enabled = true;
                 _repair.Enabled = _update.Enabled = _remove.Enabled = false;
@@ -225,39 +273,58 @@ internal static class Program
 
         private static void StopRunningApp()
         {
-            foreach (var p in Process.GetProcessesByName("v2crackN"))
+            var processes = Process.GetProcessesByName("v2crackN");
+            try
             {
-                try { if (p.Id != Environment.ProcessId) p.Kill(true); } catch { }
-                p.Dispose();
+                // Do not kill the client: it must shut down its core and proxy itself.
+                // Also avoid touching another portable/development copy.
+                foreach (var process in processes)
+                {
+                    string? path;
+                    try { path = process.MainModule?.FileName; }
+                    catch (Exception ex) { throw new InvalidOperationException("Не удалось проверить запущенный v2crackN. Закройте его через меню трея и повторите операцию.", ex); }
+                    if (string.IsNullOrWhiteSpace(path))
+                        throw new InvalidOperationException("Не удалось определить путь запущенного v2crackN. Закройте его через меню трея и повторите операцию.");
+                    if (string.Equals(path, AppExe, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException("Закройте v2crackN через пункт «Выйти» в трее и повторите операцию.");
+                }
+            }
+            finally
+            {
+                foreach (var process in processes) process.Dispose();
             }
         }
 
         private void SetBusy(bool busy, string text)
         {
+            _busy = busy;
             _status.Text = text;
             _progressTitle.Text = busy ? "Подготовка файлов…" : "";
             _percent.Text = busy ? "0%" : "";
             _progress.Value = 0;
             _progress.Visible = busy;
-            _install.Enabled = _repair.Enabled = _update.Enabled = _remove.Enabled = _cancel.Enabled = !busy;
+            var installed = File.Exists(AppExe);
+            _install.Enabled = !busy && !installed;
+            _repair.Enabled = _update.Enabled = _remove.Enabled = !busy && installed;
+            _cancel.Enabled = !busy;
         }
 
         /// <summary>Версия из записи «Установленные программы», если приложение уже ставилось.</summary>
-        private static string ReadInstalledVersion()
+        private static string? ReadInstalledVersion()
         {
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(UninstallKeyPath);
-                return key?.GetValue("DisplayVersion") as string ?? AppVersion;
+                return key?.GetValue("DisplayVersion") as string;
             }
-            catch { return AppVersion; }
+            catch { return null; }
         }
 
         /// <summary>Регистрация в Windows: Параметры → Приложения, Панель управления → Удаление программ.</summary>
         private static void RegisterInWindows()
         {
-            using var key = Registry.CurrentUser.CreateSubKey(UninstallKeyPath);
-            if (key is null) return;
+            using var key = Registry.CurrentUser.CreateSubKey(UninstallKeyPath)
+                ?? throw new InvalidOperationException("Не удалось создать запись приложения в Windows.");
             key.SetValue("DisplayName", AppName);
             key.SetValue("DisplayVersion", AppVersion);
             key.SetValue("Publisher", AppName);
@@ -275,7 +342,7 @@ internal static class Program
 
         private static void RemoveFromWindows()
         {
-            try { Registry.CurrentUser.DeleteSubKeyTree(UninstallKeyPath, false); } catch { }
+            Registry.CurrentUser.DeleteSubKeyTree(UninstallKeyPath, false);
         }
 
         private static int DirectorySizeKb(string dir)
@@ -296,14 +363,18 @@ internal static class Program
                 "param([switch]$Quiet)\r\n" +
                 "Add-Type -AssemblyName PresentationFramework\r\n" +
                 "if (-not $Quiet) { $answer = [System.Windows.MessageBox]::Show('Удалить v2crackN? Настройки, подписки и локальная БД сохранятся.', 'v2crackN', 4, 32); if ($answer -ne 'Yes') { exit } }\r\n" +
-                "Get-Process v2crackN -ErrorAction SilentlyContinue | Stop-Process -Force\r\n" +
+                "$app = Join-Path $PSScriptRoot 'v2crackN.exe'\r\n" +
+                "$running = @(Get-Process v2crackN -ErrorAction SilentlyContinue | Where-Object { try { $p = $_.Path; [string]::IsNullOrWhiteSpace($p) -or $p -eq $app } catch { $true } })\r\n" +
+                "if ($running.Count -gt 0) { if (-not $Quiet) { [System.Windows.MessageBox]::Show('Сначала закройте v2crackN через пункт «Выйти» в трее.', 'v2crackN', 0, 48) }; exit 1 }\r\n" +
+                "try { if (Test-Path -LiteralPath $app) { Remove-Item -LiteralPath $app -Force -ErrorAction Stop } } catch { if (-not $Quiet) { [System.Windows.MessageBox]::Show('Не удалось удалить программу. Закройте её и повторите попытку.', 'v2crackN', 0, 48) }; exit 1 }\r\n" +
                 "Remove-Item '" + DesktopShortcut.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n" +
                 "Remove-Item '" + StartMenuShortcut.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n" +
-                "Remove-Item 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\v2crackN' -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
-                "$keep = @('guiConfigs', 'proto-settings.json', 'payload-state.json')\r\n" +
-                "Get-ChildItem -LiteralPath $PSScriptRoot -Force -ErrorAction SilentlyContinue | Where-Object { $keep -notcontains $_.Name } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue\r\n" +
+                "$reg = 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\v2crackN'\r\n" +
+                "try { if (Test-Path -LiteralPath $reg) { Remove-Item -LiteralPath $reg -Recurse -Force -ErrorAction Stop } } catch { if (-not $Quiet) { [System.Windows.MessageBox]::Show('Файл программы удалён, но не удалось убрать запись из Windows. Повторите удаление.', 'v2crackN', 0, 48) }; exit 1 }\r\n" +
+                "@('v2crackN.exe','README.txt') | ForEach-Object { Remove-Item -LiteralPath (Join-Path $PSScriptRoot $_) -Force -ErrorAction SilentlyContinue }\r\n" +
                 "if (-not $Quiet) { [System.Windows.MessageBox]::Show('v2crackN удалён. Настройки сохранены в папке приложения.', 'v2crackN', 0, 64) }\r\n";
-            File.WriteAllText(UninstallScript, script);
+            // Windows PowerShell 5.1 needs a UTF-8 BOM to decode Russian messages correctly.
+            File.WriteAllText(UninstallScript, script, new System.Text.UTF8Encoding(true));
         }
 
         private static void CreateShortcut(string path)
@@ -313,12 +384,15 @@ internal static class Program
                          "$s.TargetPath='" + AppExe.Replace("'", "''") + "';$s.WorkingDirectory='" + InstallDir.Replace("'", "''") + "';" +
                          "$s.IconLocation='" + AppExe.Replace("'", "''") + "';$s.Save()";
             using var p = Process.Start(new ProcessStartInfo("powershell.exe", "-NoProfile -ExecutionPolicy Bypass -Command \"" + script + "\"") { CreateNoWindow = true, UseShellExecute = false });
-            p?.WaitForExit(5000);
+            if (p is null) throw new InvalidOperationException("Не удалось запустить создание ярлыка.");
+            if (!p.WaitForExit(5000)) throw new TimeoutException("Создание ярлыка не завершилось вовремя.");
+            if (p.ExitCode != 0 || !File.Exists(path))
+                throw new InvalidOperationException("Не удалось создать ярлык: " + path);
         }
 
         private static void DeleteShortcut(string path)
         {
-            try { if (File.Exists(path)) File.Delete(path); } catch { }
+            if (File.Exists(path)) File.Delete(path);
             try { if (Directory.Exists(StartMenuDir) && !Directory.EnumerateFileSystemEntries(StartMenuDir).Any()) Directory.Delete(StartMenuDir); } catch { }
         }
     }

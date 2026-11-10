@@ -41,7 +41,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\ServiceLib\ServiceLib.csproj" />
+		<ProjectReference Include="..\..\v2rayN\ServiceLib\ServiceLib.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

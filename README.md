@@ -16,13 +16,19 @@
 
 **https://github.com/wifitldev/v2crackpc/releases**
 
-Архив `v2crackN-windows-64.zip` — самодостаточный, **.NET устанавливать не нужно**.
+- `v2crackN-<версия>-windows-10-11.zip` — распаковать и запустить `v2crackN.exe`;
+- `v2crackN-<версия>-windows-10-11-installer.exe` — установщик в `%LocalAppData%\Programs\v2crackN`.
 
-### Установка
-1. Распаковать архив в любую папку (например `C:\Programs\v2crackN`).
-2. Запустить `v2crackN.exe`.
+Оба варианта самодостаточные: **.NET устанавливать не нужно**. Ядро (Xray, sing-box),
+`geoip.dat`, `geosite.dat`, `wintun.dll` и модуль обхода DPI **уже внутри** — докачивать ничего не надо.
 
-Ядро (Xray, sing-box), `geoip.dat`, `geosite.dat` и `wintun.dll` **уже внутри** — докачивать ничего не надо.
+Проверяйте контрольные суммы (рядом с каждым файлом лежит `.sha256`):
+
+```powershell
+certutil -hashfile v2crackN-<версия>-windows-10-11.zip SHA256
+```
+
+Windows SmartScreen может предупредить о неизвестном издателе: «Подробнее» → «Выполнить в любом случае».
 
 ---
 
@@ -56,20 +62,51 @@ PermanentSubUrl  = "...";   // адрес вашей подписки
 
 ## Сборка из исходников
 
-Требуется **.NET SDK 10**.
+Для продолжения незавершённой разработки и проверок см. [памятку для следующего агента](AGENTS.md) и [чек-лист проверки нового интерфейса](app/TESTING.md).
+
+Требуется **.NET SDK 10**. Основной Windows-интерфейс — WPF-приложение в
+[`app/`](app/UiProto.csproj), использует общую `ServiceLib`:
+
+```powershell
+dotnet build app\UiProto.csproj -c Release
+dotnet run --project v2rayN\ServiceLib.Tests\ServiceLib.Tests.csproj -c Release
+```
+
+Всё решение сразу (новый UI + Avalonia + ServiceLib + тесты):
 
 ```powershell
 git clone https://github.com/wifitldev/v2crackpc.git
 cd v2crackpc
-
 dotnet build v2rayN\v2rayN.sln -c Release
-dotnet test  v2rayN\v2rayN.sln -c Release --no-build   # 125 тестов
 ```
 
 | Проект | Назначение |
 | --- | --- |
-| `v2rayN\v2rayN` | WPF — основная сборка под Windows |
-| `v2rayN\v2rayN.Desktop` | Avalonia — кроссплатформенная (Linux / macOS) |
+| `app\` | **Основной** WPF-интерфейс Windows-клиента |
+| `v2rayN\v2rayN.Desktop` | Avalonia — кроссплатформенный (Linux / macOS) |
+| `v2rayN\ServiceLib` | Общая логика: конфиги, подписки, ядро, системный прокси |
+| `tools\installer` | WinForms-установщик для готовых сборок |
+| `legacy\` | Архив старого WPF-UI и его упаковщика — не собирается в релизы |
+
+Для упаковки релиза есть [`tools/pack-ui-proto.ps1`](tools/pack-ui-proto.ps1).
+Перед запуском прочитайте скрипт: он очищает локальные логи и временные файлы
+в staging-каталогах публикации.
+
+```powershell
+.\tools\pack-ui-proto.ps1 -Version 1.2.3 -CoreSource "C:\cores" -SingBoxExe "C:\cores\sing-box.exe"
+# При необходимости добавить -Installer
+```
+
+В `CoreSource` нужны `xray.exe`, `geoip.dat`, `geosite.dat` и `wintun.dll`;
+`sing-box.exe` обязателен и указывается отдельно. Скрипт формирует ZIP
+`v2crackN-<версия>-windows-10-11.zip` и файл SHA-256 в `dist`, а при `-Installer` —
+также установщик и его контрольную сумму. Перед публикацией проверьте архив на
+тестовой машине, состав файлов и хеш. Проверка на личные файлы в скрипте полезна,
+но не заменяет ручной ревизии: журналы и конфигурации могут содержать адреса
+и учётные данные.
+
+Сценарии проверки подключения, трея и релизного архива, включая меры безопасности,
+описаны в [чек-листе тестирования](app/TESTING.md).
 
 > [!NOTE]
 > В исходниках **нет бинарных ядер** — как и в апстриме. Для готового релиза
@@ -81,39 +118,24 @@ dotnet test  v2rayN\v2rayN.sln -c Release --no-build   # 125 тестов
 ## Как выпустить новую версию
 
 ```powershell
-# 1. поднять версию в v2rayN\Directory.Build.props (например 1.0.2)
-# 2. собрать самодостаточный архив с ядрами
-powershell -File tools\pack.ps1
-# 3. закоммитить и запушить
+# 1. собрать самодостаточный архив с ядрами (и установщик при -Installer)
+powershell -File tools\pack-ui-proto.ps1 -Version 1.2.3 -CoreSource "C:\cores" -SingBoxExe "C:\cores\sing-box.exe"
+# 2. закоммитить и запушить
 git add -A
-git commit -m "release 1.0.2"
+git commit -m "release 1.2.3"
 git push
 
-# 4. GitHub → Releases → Create a new release
-#    тег:      1.0.2
-#    ассет:    dist\v2crackN-windows-64.zip
-#    текст:    добавить sha256 (печатает pack.ps1)
+# 3. GitHub → Releases → Create a new release
+#    тег:      1.2.3
+#    ассеты:   dist\v2crackN-1.2.3-windows-10-11.zip (+ .sha256)
+#              dist\v2crackN-1.2.3-windows-10-11-installer.exe (+ .sha256)
 ```
 
-Имя ассета **должно** совпадать с `Global.AppReleaseAssetName`:
-
-```
-v2crackN-windows-64.zip
-v2crackN-windows-arm64.zip
-v2crackN-linux-64.zip
-v2crackN-linux-arm64.zip
-v2crackN-macos-64.zip
-v2crackN-macos-arm64.zip
-```
+Архивы Linux/macOS собирает CI (`.github/workflows`), имена ассетов
+`v2crackN-<платформа>.zip` должны совпадать с `Global.AppReleaseAssetName`.
 
 Как только релиз опубликован, клиент сам подхватит его:
 **Help → Check Update** сверяет тег релиза с текущей версией.
-
-`tools\pack.ps1` принимает параметры, если ядра лежат не там:
-
-```powershell
-.\tools\pack.ps1 -CoreSource "C:\папка\с\ядром" -SingBoxExe "C:\path\sing-box.exe"
-```
 
 ---
 
@@ -121,14 +143,19 @@ v2crackN-macos-arm64.zip
 
 ```
 v2crackpc/
+├── app/                     # основной WPF-интерфейс Windows-клиента + TESTING.md
 ├── v2rayN/
 │   ├── ServiceLib/          # общая логика: модели, хендлеры, вью-модели, сервисы
-│   ├── v2rayN/              # WPF-приложение (Windows)
-│   └── v2rayN.Desktop/      # Avalonia-приложение (Windows/Linux/macOS)
+│   ├── ServiceLib.Tests/    # TUnit-тесты (запуск: dotnet run, не dotnet test)
+│   ├── v2rayN.Desktop/      # Avalonia-приложение (Linux/macOS)
+│   └── v2rayN.sln           # решение: app + Avalonia + ServiceLib + тесты
 ├── tools/
-│   ├── IconGen/             # генератор иконок (dotnet run --project tools\IconGen)
-│   └── pack.ps1             # сборка релизного zip с ядрами
-├── _icon/                   # исходник иконки + превью
+│   ├── pack-ui-proto.ps1    # упаковка релиза Windows (ZIP + установщик)
+│   ├── installer/           # WinForms-установщик готовой сборки
+│   ├── dpi/ciadpi.exe       # модуль обхода DPI (byedpi)
+│   └── IconGen/             # генератор иконок (dotnet run --project tools\IconGen)
+├── legacy/                  # архив старого WPF-UI и его упаковщика (не собирается)
+├── _icon/                   # исходник иконки
 ├── ЧТО_ИЗМЕНЕНО.md          # описание всех отличий от v2rayN
 └── README.md
 ```

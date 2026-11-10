@@ -817,7 +817,7 @@ public class Utils
     {
         try
         {
-            if (!PortInUse(defaultPort))
+            if (defaultPort is >= 1 and <= 65535 && !PortInUse(defaultPort))
             {
                 return defaultPort;
             }

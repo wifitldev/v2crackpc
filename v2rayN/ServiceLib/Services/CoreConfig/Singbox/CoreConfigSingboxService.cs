@@ -120,28 +120,12 @@ public partial class CoreConfigSingboxService(CoreConfigContext context)
                 }
 
                 //find unused port
-                var port = initPort;
-                for (var k = initPort; k < Global.MaxPort; k++)
-                {
-                    if (lstIpEndPoints?.FindIndex(_it => _it.Port == k) >= 0)
-                    {
-                        continue;
-                    }
-                    if (lstTcpConns?.FindIndex(_it => _it.LocalEndPoint.Port == k) >= 0)
-                    {
-                        continue;
-                    }
-                    //found
-                    port = k;
-                    initPort = port + 1;
-                    break;
-                }
-
-                //Port In Used
-                if (lstIpEndPoints?.FindIndex(_it => _it.Port == port) >= 0)
-                {
+                var port = SpeedtestPortAllocator.FindNext(initPort, candidate =>
+                    lstIpEndPoints?.FindIndex(endpoint => endpoint.Port == candidate) >= 0 ||
+                    lstTcpConns?.FindIndex(connection => connection.LocalEndPoint.Port == candidate) >= 0);
+                if (port < 0)
                     continue;
-                }
+                initPort = port + 1;
                 it.Port = port;
                 it.AllowTest = true;
 

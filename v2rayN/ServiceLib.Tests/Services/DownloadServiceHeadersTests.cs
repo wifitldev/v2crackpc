@@ -147,7 +147,13 @@ public class DownloadServiceHeadersTests
             {
                 await _serverTask;
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (_cancellation.IsCancellationRequested)
+            {
+            }
+            catch (ObjectDisposedException) when (_cancellation.IsCancellationRequested)
+            {
+            }
+            catch (SocketException) when (_cancellation.IsCancellationRequested)
             {
             }
             finally

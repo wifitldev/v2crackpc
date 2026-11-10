@@ -14,6 +14,14 @@ public class CoreManager
 
     private ProcessService? _processService;
     private ProcessService? _processPreService;
+    public bool IsCoreRunning
+    {
+        get
+        {
+            try { return _processService is { HasExited: false }; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
     private bool _linuxSudo = false;
     private Func<bool, string, Task>? _updateFunc;
     private const string _tag = "CoreHandler";
@@ -157,32 +165,29 @@ public class CoreManager
 
     public async Task CoreStop()
     {
-        try
-        {
-            if (_linuxSudo)
+        await ShutdownCleanup.RunAsync(
+        [
+            async () =>
             {
+                if (!_linuxSudo) return;
                 await CoreAdminManager.Instance.KillProcessAsLinuxSudo();
                 _linuxSudo = false;
-            }
-
-            if (_processService != null)
+            },
+            async () =>
             {
+                if (_processService == null) return;
                 await _processService.StopAsync();
                 _processService.Dispose();
                 _processService = null;
-            }
-
-            if (_processPreService != null)
+            },
+            async () =>
             {
+                if (_processPreService == null) return;
                 await _processPreService.StopAsync();
                 _processPreService.Dispose();
                 _processPreService = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Logging.SaveLog(_tag, ex);
-        }
+            },
+        ], ex => Logging.SaveLog(_tag, ex));
     }
 
     #region Private

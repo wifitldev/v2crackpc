@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\v2rayN\ServiceLib\ServiceLib.csproj" />
+    <ProjectReference Include="..\v2rayN\ServiceLib\ServiceLib.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -12,8 +12,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>v2crackN</AssemblyName>
     <RootNamespace>UiProto</RootNamespace>
-    <!-- иконка приложения: та же, что у основного клиента (её генерирует tools/IconGen) -->
-    <ApplicationIcon>..\..\v2rayN\v2rayN\Resources\v2rayN.ico</ApplicationIcon>
+    <!-- иконка приложения: локальная копия (исходник генерирует tools/IconGen) -->
+    <ApplicationIcon>v2crackN.ico</ApplicationIcon>
     <!-- версия для UI; упаковщик перекрывает её через -p:Version=… -->
     <Version>1.2.0</Version>
     <!-- нативные библиотеки (sqlite, skia) внутрь единого exe -->

@@ -7,6 +7,9 @@ namespace UiProto;
 public partial class App : Application
 {
     private Mutex? _singleInstance;
+    private EventWaitHandle? _showWindowEvent;
+    private CancellationTokenSource? _activationCancellation;
+    private Task? _activationTask;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -15,10 +18,16 @@ public partial class App : Application
         _singleInstance = new Mutex(true, @"Local\v2crackN", out var firstInstance);
         if (!firstInstance)
         {
-            FocusRunningInstance();
+            SignalRunningInstance();
             Shutdown(0);
             return;
         }
+
+        _showWindowEvent = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\v2crackN.ShowWindow");
+        _activationCancellation = new CancellationTokenSource();
+        var activationToken = _activationCancellation.Token;
+        var activationEvent = _showWindowEvent;
+        _activationTask = Task.Run(() => ListenForActivation(activationEvent, activationToken));
 
         // Аппаратный D3D-путь WPF на этой машине не отдаёт кадр (белый экран при
         // полностью корректном внутреннем рендере — проверено на минимальном
@@ -46,8 +55,49 @@ public partial class App : Application
         }
     }
 
+    private static void SignalRunningInstance()
+    {
+        // The first process may still be creating the named event.
+        for (var attempt = 0; attempt < 10; attempt++)
+        {
+            try
+            {
+                using var signal = EventWaitHandle.OpenExisting(@"Local\v2crackN.ShowWindow");
+                signal.Set();
+                return;
+            }
+            catch (WaitHandleCannotBeOpenedException) { Thread.Sleep(100); }
+            catch (UnauthorizedAccessException) { break; }
+        }
+        FocusRunningInstance();
+    }
+
+    private void ListenForActivation(EventWaitHandle signal, CancellationToken token)
+    {
+        while (WaitHandle.WaitAny([signal, token.WaitHandle]) == 0)
+        {
+            // StartupUri creates the window after OnStartup. Wait until startup
+            // work has been dispatched before handling an immediate second launch.
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () =>
+            {
+                if (token.IsCancellationRequested || MainWindow is not Window window) return;
+                window.Show();
+                window.WindowState = WindowState.Normal;
+                window.Activate();
+            });
+        }
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        _activationCancellation?.Cancel();
+        try { _activationTask?.GetAwaiter().GetResult(); }
+        catch (Exception) { /* application is exiting */ }
+        _showWindowEvent?.Dispose();
+        _activationCancellation?.Dispose();
+        _activationTask = null;
+        _showWindowEvent = null;
+        _activationCancellation = null;
         if (_singleInstance is not null)
         {
             try { _singleInstance.ReleaseMutex(); } catch { /* уже отпущена */ }

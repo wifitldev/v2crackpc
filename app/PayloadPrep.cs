@@ -54,7 +54,7 @@ public static class PayloadPrep
                 JsonNode.Parse(File.ReadAllText(StatePath)) is JsonObject state &&
                 state["socksPort"] is JsonValue value &&
                 value.TryGetValue<int>(out var port) &&
-                port is >= 1024 and <= 65535)
+                PortRules.IsValidSocksPort(port))
             {
                 // миграция: старый порт прототипа 10890 → стоковый 10808
                 return port == LegacyProtoPort ? ProtoPort : port;
@@ -68,21 +68,8 @@ public static class PayloadPrep
         return ProtoPort;
     }
 
-    /// <summary>Запомнить порт, выбранный в настройках, чтобы при следующем старте не перетирать его.</summary>
-    public static void SaveWantedPort(int port)
-    {
-        try
-        {
-            var json = JsonSerializer.Serialize(
-                new Dictionary<string, int> { ["socksPort"] = port },
-                new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(StatePath, json);
-        }
-        catch
-        {
-            // не критично: при следующем старте применится порт по умолчанию
-        }
-    }
+    /// <summary>Запомнить порт для следующего запуска; false означает ошибку записи.</summary>
+    public static bool SaveWantedPort(int port) => PortStateFile.Save(StatePath, port);
 
     private static void PatchConfig()
     {

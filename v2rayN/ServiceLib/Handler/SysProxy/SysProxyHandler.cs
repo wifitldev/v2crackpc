@@ -5,19 +5,30 @@ public static class SysProxyHandler
     private static readonly string _tag = "SysProxyHandler";
     private static readonly Lazy<PacManager> _pacManager = new(() => new PacManager());
 
-    public static async Task<bool> UpdateSysProxy(Config config, bool forceDisable)
+    public static async Task<bool> UpdateSysProxy(Config config, bool forceDisable, ESysProxyType? overrideType = null)
     {
-        var type = config.SystemProxyItem.SysProxyType;
-
-        if (forceDisable && type != ESysProxyType.Unchanged)
-        {
-            type = ESysProxyType.ForcedClear;
-        }
-
         try
         {
-            var port = AppManager.Instance.GetLocalPort(EInboundProtocol.socks);
-            if (port <= 0)
+            var type = overrideType ?? config.SystemProxyItem.SysProxyType;
+            if (forceDisable && type != ESysProxyType.Unchanged)
+            {
+                type = ESysProxyType.ForcedClear;
+            }
+
+            if (type is not (ESysProxyType.Unchanged or ESysProxyType.ForcedClear or ESysProxyType.ForcedChange or ESysProxyType.Pac))
+                return false;
+            // Unchanged is a true no-op, including the embedded PAC server.
+            if (type == ESysProxyType.Unchanged)
+                return true;
+            if (type == ESysProxyType.Pac && !Utils.IsWindows())
+                return false;
+            if (!Utils.IsWindows() && !Utils.IsLinux() && !Utils.IsMacOS())
+                return false;
+
+            // Clearing the system proxy must not depend on a valid local inbound.
+            var needsPort = type is ESysProxyType.ForcedChange or ESysProxyType.Pac;
+            var port = needsPort ? AppManager.Instance.GetLocalPort(EInboundProtocol.socks) : 0;
+            if (needsPort && (port <= 0 || port > 65535))
             {
                 return false;
             }
@@ -25,7 +36,8 @@ public static class SysProxyHandler
             {
                 case ESysProxyType.ForcedChange when Utils.IsWindows():
                     var (strProxy, strExceptions) = GetWindowsProxyString(config, port);
-                    ProxySettingWindows.SetProxy(strProxy, strExceptions, 2);
+                    if (!ProxySettingWindows.SetProxy(strProxy, strExceptions, 2))
+                        return false;
                     break;
 
                 case ESysProxyType.ForcedChange when Utils.IsLinux():
@@ -39,7 +51,8 @@ public static class SysProxyHandler
                     break;
 
                 case ESysProxyType.ForcedClear when Utils.IsWindows():
-                    ProxySettingWindows.UnsetProxy();
+                    if (!ProxySettingWindows.UnsetProxy())
+                        return false;
                     break;
 
                 case ESysProxyType.ForcedClear when Utils.IsLinux():
@@ -51,18 +64,20 @@ public static class SysProxyHandler
                     break;
 
                 case ESysProxyType.Pac when Utils.IsWindows():
-                    await SetWindowsProxyPac(port);
+                    if (!await SetWindowsProxyPac(port))
+                        return false;
                     break;
             }
 
-            if (type != ESysProxyType.Pac && Utils.IsWindows())
+            if (type != ESysProxyType.Pac && Utils.IsWindows() && _pacManager.IsValueCreated)
             {
                 _pacManager.Value.Stop();
             }
         }
         catch (Exception ex)
         {
-            Logging.SaveLog(_tag, ex);
+            try { Logging.SaveLog(_tag, ex); } catch { /* logging must not hide the proxy failure */ }
+            return false;
         }
         return true;
     }
@@ -108,11 +123,22 @@ public static class SysProxyHandler
     }
 
     [SupportedOSPlatform("windows")]
-    private static async Task SetWindowsProxyPac(int port)
+    private static async Task<bool> SetWindowsProxyPac(int port)
     {
         var portPac = AppManager.Instance.GetLocalPort(EInboundProtocol.pac);
+        if (portPac is <= 0 or > 65535)
+            return false;
         await _pacManager.Value.StartAsync(port, portPac);
-        var strProxy = $"{Global.HttpProtocol}{Global.Loopback}:{portPac}/pac?t={DateTime.Now.Ticks}";
-        ProxySettingWindows.SetProxy(strProxy, "", 4);
+        var applied = false;
+        try
+        {
+            var strProxy = $"{Global.HttpProtocol}{Global.Loopback}:{portPac}/pac?t={DateTime.Now.Ticks}";
+            applied = ProxySettingWindows.SetProxy(strProxy, "", 4);
+            return applied;
+        }
+        finally
+        {
+            if (!applied) _pacManager.Value.Stop();
+        }
     }
 }

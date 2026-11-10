@@ -41,6 +41,8 @@ public sealed class ProtoApp
 
     public bool Initialized { get; private set; }
     public bool CoreUp { get; private set; }
+    private readonly ConnectionGate _connectionGate = new();
+    private bool _systemProxyTouched;
     public bool TunnelMode { get; private set; }
 
     private long _sessionUp;
@@ -52,11 +54,7 @@ public sealed class ProtoApp
 
     public (long Up, long Down) SessionTotals => (_sessionUp, _sessionDown);
 
-    private void Say(string message)
-    {
-        if (!string.IsNullOrWhiteSpace(message))
-            Log?.Invoke(message.Trim());
-    }
+    private void Say(string message) => LogNotification.Publish(Log, message);
 
     // ---------------------------------------------------------------- init
 
@@ -154,112 +152,149 @@ public sealed class ProtoApp
 
     // ------------------------------------------------------------- connect
 
-    public async Task<OpResult> ConnectAsync()
+    public Task<OpResult> ConnectAsync() => _connectionGate.RunAsync(ConnectCoreAsync);
+
+    private async Task<OpResult> ConnectCoreAsync()
     {
         if (!Initialized)
             return OpResult.Bad("не инициализировано");
 
         var config = Config;
-        var profile = await ConfigHandler.GetDefaultServer(config);
-        if (profile is null)
-            return OpResult.Bad("сервер не выбран");
-
-        Say("build config · " + profile.GetSummary());
-
-        var all = await CoreConfigContextBuilder.BuildAll(config, profile);
-        var validator = all.CombinedValidatorResult;
-        foreach (var warning in validator.Warnings)
-            Say("warn: " + warning);
-
-        if (!all.Success)
-            return OpResult.Bad(string.Join("; ", validator.Errors));
-
-        config.SystemProxyItem.SysProxyType = TunnelMode
-            ? ESysProxyType.ForcedChange
-            : ESysProxyType.ForcedClear;
-
-        await Task.Run(async () =>
+        OpResult PreflightFailure(string message) => OpResult.Bad(
+            !CoreUp && _systemProxyTouched
+                ? message + "; предыдущая очистка системного прокси не подтверждена, проверьте настройки Windows"
+                : message);
+        CoreConfigContextBuilderAllResult all;
+        try
         {
-            await CoreManager.Instance.LoadCore(all.MainResult.Context, all.PreSocksResult?.Context);
-            await SysProxyHandler.UpdateSysProxy(config, false);
-        });
+            var profile = await ConfigHandler.GetDefaultServer(config);
+            if (profile is null)
+                return PreflightFailure("сервер не выбран");
 
-        if (!await WaitForPortAsync(SocksPort, 8000))
+            Say("build config · " + profile.GetSummary());
+            all = await CoreConfigContextBuilder.BuildAll(config, profile);
+            var validator = all.CombinedValidatorResult;
+            foreach (var warning in validator.Warnings)
+                Say("warn: " + warning);
+
+            if (!all.Success)
+                return PreflightFailure(string.Join("; ", validator.Errors));
+
+            // Do not mistake an unrelated listener for a successfully started core.
+            if (!CoreUp && await IsPortAliveAsync())
+                return PreflightFailure($"порт {SocksPort} уже занят; выберите другой порт");
+        }
+        catch (Exception ex)
         {
-            // The core may fail after the system proxy was switched; always restore direct access.
-            try
-            {
-                config.SystemProxyItem.SysProxyType = ESysProxyType.ForcedClear;
-                await SysProxyHandler.UpdateSysProxy(config, false);
-            }
-            catch (Exception ex) { Say("proxy restore error · " + ex.Message); }
-            try { await CoreManager.Instance.CoreStop(); } catch { }
-            CoreUp = false;
-            Say("порт " + SocksPort + " не поднялся");
-            return OpResult.Bad("ядро не подняло порт " + SocksPort);
+            Say("connect preflight error · " + ex.GetType().Name);
+            return PreflightFailure("ошибка подготовки подключения (" + ex.GetType().Name + ")");
         }
 
-        CoreUp = true;
-        _sessionUp = 0;
-        _sessionDown = 0;
-        Say($"connected · socks {SocksPort}");
-        return OpResult.Good();
+        // A previous failed cleanup remains relevant even if this connection
+        // fails before it gets as far as applying the system proxy.
+        var proxyTouched = _systemProxyTouched;
+        try
+        {
+            // During a reconnect, avoid leaving Windows pointed at a stopped core.
+            if (CoreUp)
+            {
+                if (_systemProxyTouched)
+                {
+                    proxyTouched = true;
+                    if (!await SysProxyHandler.UpdateSysProxy(config, false, ESysProxyType.ForcedClear))
+                        throw new InvalidOperationException("не удалось отключить системный прокси перед переподключением");
+                    _systemProxyTouched = false;
+                    proxyTouched = false;
+                }
+                await CoreManager.Instance.CoreStop();
+                CoreUp = false;
+                if (await IsPortAliveAsync())
+                    throw new InvalidOperationException($"порт {SocksPort} уже занят; выберите другой порт");
+            }
+
+            await CoreManager.Instance.LoadCore(all.MainResult.Context, all.PreSocksResult?.Context);
+            if (!CoreManager.Instance.IsCoreRunning || !await LocalPortProbe.WaitAsync(SocksPort, 8000) || !CoreManager.Instance.IsCoreRunning)
+                throw new InvalidOperationException($"ядро не подняло порт {SocksPort}; проверьте ядро и журнал");
+
+            config.SystemProxyItem.SysProxyType = TunnelMode
+                ? ESysProxyType.ForcedChange
+                : ESysProxyType.ForcedClear;
+            if (ProxyModeRules.ShouldApplyOnConnect(TunnelMode, _systemProxyTouched))
+            {
+                proxyTouched = true;
+                _systemProxyTouched = true;
+                if (!await SysProxyHandler.UpdateSysProxy(config, false))
+                    throw new InvalidOperationException("не удалось изменить системный прокси");
+                _systemProxyTouched = TunnelMode;
+            }
+
+            CoreUp = true;
+            _sessionUp = 0;
+            _sessionDown = 0;
+            Say($"connected · socks {SocksPort}");
+            return OpResult.Good();
+        }
+        catch (Exception ex)
+        {
+            var proxyCleared = !proxyTouched;
+            try
+            {
+                if (proxyTouched)
+                {
+                    proxyCleared = await SysProxyHandler.UpdateSysProxy(config, false, ESysProxyType.ForcedClear);
+                    if (proxyCleared) _systemProxyTouched = false;
+                }
+            }
+            catch (Exception cleanupEx) { Say("proxy restore error · " + cleanupEx.Message); }
+            try { await CoreManager.Instance.CoreStop(); }
+            catch (Exception cleanupEx) { Say("core stop error · " + cleanupEx.Message); }
+            CoreUp = false;
+            var message = proxyCleared ? ex.Message : ex.Message + "; проверьте системный прокси вручную";
+            Say("connect error · " + message);
+            return OpResult.Bad(message);
+        }
     }
 
-    public async Task<OpResult> DisconnectAsync()
+    public Task<OpResult> DisconnectAsync() => _connectionGate.RunAsync(DisconnectCoreAsync);
+
+    private async Task<OpResult> DisconnectCoreAsync()
     {
         if (!Initialized)
             return OpResult.Bad("не инициализировано");
 
         var config = Config;
-        config.SystemProxyItem.SysProxyType = ESysProxyType.ForcedClear;
-        await SysProxyHandler.UpdateSysProxy(config, false);
-        await CoreManager.Instance.CoreStop();
-        await ConfigHandler.SaveConfig(config);
+        var proxyCleared = !_systemProxyTouched;
+        try
+        {
+            if (_systemProxyTouched)
+            {
+                proxyCleared = await SysProxyHandler.UpdateSysProxy(config, false, ESysProxyType.ForcedClear);
+                if (proxyCleared) _systemProxyTouched = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            try { Say("proxy clear error · " + ex.Message); } catch { }
+        }
+        finally
+        {
+            try { await CoreManager.Instance.CoreStop(); }
+            catch (Exception ex) { try { Say("core stop error · " + ex.Message); } catch { } }
+            finally { CoreUp = false; }
+        }
+        OpResult saved;
+        try { saved = await SaveSettingsAsync(config); }
+        catch (Exception ex) { saved = OpResult.Bad("не удалось сохранить настройки: " + ex.Message); }
 
-        CoreUp = false;
+        if (!proxyCleared)
+            return OpResult.Bad("не удалось отключить системный прокси; проверьте настройки Windows" +
+                (saved.Success ? "" : "; " + saved.Message));
+        if (!saved.Success) return saved;
         Say("disconnected");
         return OpResult.Good();
     }
 
-    public async Task<bool> IsPortAliveAsync()
-    {
-        try
-        {
-            using var client = new TcpClient();
-            using var cts = new CancellationTokenSource(600);
-            await client.ConnectAsync("127.0.0.1", SocksPort, cts.Token);
-            return client.Connected;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static async Task<bool> WaitForPortAsync(int port, int timeoutMs)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                using var client = new TcpClient();
-                using var cts = new CancellationTokenSource(500);
-                await client.ConnectAsync("127.0.0.1", port, cts.Token);
-                if (client.Connected)
-                    return true;
-            }
-            catch
-            {
-                // ещё не слушает
-            }
-
-            await Task.Delay(300);
-        }
-
-        return false;
-    }
+    public Task<bool> IsPortAliveAsync() => LocalPortProbe.IsListeningAsync(SocksPort);
 
     // --------------------------------------------------------------- mode
 
@@ -283,23 +318,62 @@ public sealed class ProtoApp
     }
 
     /// <summary>Tunnel = системный прокси включён, Proxy = только локальный порт.</summary>
-    public async Task<OpResult> SetTunnelModeAsync(bool tunnel)
+    public Task<OpResult> SetTunnelModeAsync(bool tunnel) =>
+        _connectionGate.RunAsync(() => SetTunnelModeCoreAsync(tunnel));
+
+    private async Task<OpResult> SetTunnelModeCoreAsync(bool tunnel)
     {
         if (!Initialized)
             return OpResult.Bad("не инициализировано");
 
-        TunnelMode = tunnel;
+        var previousMode = TunnelMode;
+        // Re-selecting the current mode is not a request to overwrite OS settings.
+        if (tunnel == previousMode) return OpResult.Good();
         var config = Config;
+        if (tunnel && CoreUp && (!CoreManager.Instance.IsCoreRunning || !await IsPortAliveAsync()))
+        {
+            var disconnected = await DisconnectCoreAsync();
+            return OpResult.Bad(disconnected.Success
+                ? "ядро не работает; подключитесь заново"
+                : disconnected.Message);
+        }
+        TunnelMode = tunnel;
 
         // Системный прокси включаем только когда ядро реально поднято,
         // иначе вся система уйдёт в мёртвый порт. Желаемый режим запоминается
         // и применяется при следующем подключении (см. ConnectAsync).
-        config.SystemProxyItem.SysProxyType = tunnel && CoreUp
+        config.SystemProxyItem.SysProxyType = tunnel
             ? ESysProxyType.ForcedChange
             : ESysProxyType.ForcedClear;
 
-        await SysProxyHandler.UpdateSysProxy(config, false);
-        var saved = await SaveSettingsAsync(config);
+        var updateLiveProxy = ProxyModeRules.ShouldUpdateSystemProxy(CoreUp);
+        if (updateLiveProxy) _systemProxyTouched = true;
+        if (updateLiveProxy && !await SysProxyHandler.UpdateSysProxy(config, false))
+        {
+            TunnelMode = previousMode;
+            config.SystemProxyItem.SysProxyType = previousMode
+                ? ESysProxyType.ForcedChange : ESysProxyType.ForcedClear;
+            var restored = await SysProxyHandler.UpdateSysProxy(config, false);
+            if (restored) _systemProxyTouched = previousMode;
+            return OpResult.Bad(restored
+                ? "не удалось изменить системный прокси"
+                : "не удалось изменить или восстановить системный прокси; проверьте настройки Windows");
+        }
+        if (updateLiveProxy) _systemProxyTouched = tunnel;
+        OpResult saved;
+        try { saved = await SaveSettingsAsync(config); }
+        catch (Exception ex) { saved = OpResult.Bad("не удалось сохранить настройки: " + ex.Message); }
+        if (!saved.Success)
+        {
+            // Restore the previous live mode so the UI and persisted settings agree.
+            TunnelMode = previousMode;
+            config.SystemProxyItem.SysProxyType = previousMode
+                ? ESysProxyType.ForcedChange : ESysProxyType.ForcedClear;
+            if (updateLiveProxy) _systemProxyTouched = true;
+            var restored = !updateLiveProxy || await SysProxyHandler.UpdateSysProxy(config, false);
+            if (updateLiveProxy && restored) _systemProxyTouched = previousMode;
+            return restored ? saved : OpResult.Bad(saved.Message + "; не удалось восстановить системный прокси");
+        }
 
         Say(tunnel
             ? (CoreUp
@@ -343,10 +417,13 @@ public sealed class ProtoApp
         return saved;
     }
 
-    public async Task<OpResult> SetSocksPortAsync(int port)
+    public Task<OpResult> SetSocksPortAsync(int port) =>
+        _connectionGate.RunAsync(() => SetSocksPortCoreAsync(port));
+
+    private async Task<OpResult> SetSocksPortCoreAsync(int port)
     {
-        if (port is < 1024 or > 65535)
-            return OpResult.Bad("порт должен быть 1024-65535");
+        if (!PortRules.IsValidSocksPort(port))
+            return OpResult.Bad("порт должен быть 1024-65514");
 
         var config = Config;
         var inbound = config.Inbound?.FirstOrDefault(t => t.Protocol == "socks");
@@ -356,16 +433,53 @@ public sealed class ProtoApp
         if (inbound.LocalPort == port)
             return OpResult.Good();
 
+        if (CoreUp && await LocalPortProbe.IsListeningAsync(port))
+            return OpResult.Bad($"порт {port} уже занят; выберите другой порт");
+
+        var previousPort = inbound.LocalPort;
         inbound.LocalPort = port;
-        var saved = await SaveSettingsAsync(config);
+        OpResult saved;
+        try { saved = await SaveSettingsAsync(config); }
+        catch (Exception ex)
+        {
+            inbound.LocalPort = previousPort;
+            AppManager.Instance.Reset();
+            return OpResult.Bad("не удалось сохранить порт: " + ex.Message);
+        }
         if (!saved.Success)
+        {
+            inbound.LocalPort = previousPort;
+            AppManager.Instance.Reset();
             return saved;
+        }
 
         AppManager.Instance.Reset();
-        PayloadPrep.SaveWantedPort(port);
+        var stateSaved = PayloadPrep.SaveWantedPort(port);
         Say("local port → " + port);
 
-        return CoreUp ? await ConnectAsync() : OpResult.Good();
+        OpResult result;
+        try { result = CoreUp ? await ConnectCoreAsync() : OpResult.Good(); }
+        catch (Exception ex) { result = OpResult.Bad(ex.Message); }
+
+        // Validation can fail before reconnect stops the old core. Keep the
+        // configured port aligned with that still-running connection.
+        if (!result.Success && CoreUp)
+        {
+            inbound.LocalPort = previousPort;
+            AppManager.Instance.Reset();
+            var rolledBack = await PortRollback.SaveAsync(
+                async () => (await SaveSettingsAsync(config)).Success,
+                () => PayloadPrep.SaveWantedPort(previousPort));
+            if (!rolledBack)
+                return OpResult.Bad(result.Message + "; не удалось сохранить прежний порт, проверьте настройки после перезапуска");
+            return result;
+        }
+        if (!stateSaved)
+        {
+            const string warning = "не удалось сохранить порт для следующего запуска";
+            return OpResult.Bad(result.Success ? warning : result.Message + "; " + warning);
+        }
+        return result;
     }
 
     /// <summary>Смена темы: пишет UiItem.CurrentTheme и сразу перекрашивает палитру.</summary>
@@ -436,15 +550,17 @@ public sealed class ProtoApp
 
     public Task<ProfileItem?> CurrentProfileAsync() => ConfigHandler.GetDefaultServer(Config);
 
-    public async Task<OpResult> SelectProfileAsync(string indexId)
+    public Task<OpResult> SelectProfileAsync(string indexId) =>
+        _connectionGate.RunAsync(() => SelectProfileCoreAsync(indexId));
+
+    private async Task<OpResult> SelectProfileCoreAsync(string indexId)
     {
         if (await ConfigHandler.SetDefaultServerIndex(Config, indexId) != 0)
             return OpResult.Bad("не удалось выбрать сервер");
 
-        var profile = await ConfigHandler.GetDefaultServer(Config);
-        Say("server → " + (profile?.Remarks ?? indexId));
+        Say("server selected");
 
-        return CoreUp ? await ConnectAsync() : OpResult.Good();
+        return CoreUp ? await ConnectCoreAsync() : OpResult.Good();
     }
 
     public Task<List<RoutingItem>?> RoutingsAsync() => AppManager.Instance.RoutingItems();
@@ -470,21 +586,23 @@ public sealed class ProtoApp
             return OpResult.Bad("invalid subscription url");
 
         await ConfigHandler.SaveConfig(config);
-        Say("subscription added · " + url);
+        Say("subscription added");
 
         var sub = (await AppManager.Instance.SubItems())?.FirstOrDefault(t => t.Url == url);
         if (sub is null)
             return OpResult.Good("subscription saved");
 
-        await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (_, msg) =>
+        var updated = false;
+        await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (success, msg) =>
         {
+            updated |= success;
             if (!string.IsNullOrWhiteSpace(msg))
                 Say(msg.Trim());
             return Task.CompletedTask;
         });
 
         var count = (await AppManager.Instance.ProfileItems(sub.Id))?.Count ?? 0;
-        return count > 0
+        return updated && count > 0
             ? OpResult.Good($"loaded {count} servers")
             : OpResult.Bad("подписка сохранена, но серверы не загрузились");
     }
@@ -508,13 +626,15 @@ public sealed class ProtoApp
         {
             try
             {
-                await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (_, msg) =>
+                var updated = false;
+                await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (success, msg) =>
                 {
+                    updated |= success;
                     if (!string.IsNullOrWhiteSpace(msg))
                         Say(msg.Trim());
                     return Task.CompletedTask;
                 });
-                ok++;
+                if (updated) ok++;
             }
             catch (Exception ex)
             {
@@ -542,10 +662,12 @@ public sealed class ProtoApp
         if (sub is null)
             return OpResult.Bad("подписка не найдена");
 
+        var updated = false;
         try
         {
-            await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (_, msg) =>
+            await SubscriptionHandler.UpdateProcess(config, sub.Id, CoreUp, (success, msg) =>
             {
+                updated |= success;
                 if (!string.IsNullOrWhiteSpace(msg))
                     Say(msg.Trim());
                 return Task.CompletedTask;
@@ -557,7 +679,7 @@ public sealed class ProtoApp
         }
 
         var count = (await AppManager.Instance.ProfileItems(sub.Id))?.Count ?? 0;
-        return count > 0
+        return updated && count > 0
             ? OpResult.Good($"обновлено · серверов: {count}")
             : OpResult.Bad("серверы не загрузились");
     }
@@ -1114,7 +1236,10 @@ public sealed class ProtoApp
         return OpResult.Good("server moved");
     }
 
-    public async Task<OpResult> SelectRoutingAsync(string id)
+    public Task<OpResult> SelectRoutingAsync(string id) =>
+        _connectionGate.RunAsync(() => SelectRoutingCoreAsync(id));
+
+    private async Task<OpResult> SelectRoutingCoreAsync(string id)
     {
         var item = await AppManager.Instance.GetRoutingItem(id);
         if (item is null)
@@ -1125,7 +1250,7 @@ public sealed class ProtoApp
 
         Say("routing → " + item.Remarks);
 
-        return CoreUp ? await ConnectAsync() : OpResult.Good();
+        return CoreUp ? await ConnectCoreAsync() : OpResult.Good();
     }
 
     /// <summary>HTTP-прокси — всегда SOCKS+1 (второй mixed-вход в конфиге).</summary>
@@ -1205,19 +1330,23 @@ public sealed class ProtoApp
 
     // --------------------------------------------------------------- exit
 
-    public async Task ExitAsync()
-    {
-        if (!Initialized)
-            return;
+    public Task<OpResult> ExitAsync() => _connectionGate.RunAsync(ExitCoreAsync);
 
+    private async Task<OpResult> ExitCoreAsync()
+    {
         try
         {
-            await AppManager.Instance.AppExitAsync(false);
-            Say("exit · core stopped, system proxy cleared");
+            if (!Initialized) return OpResult.Good();
+            var proxyCleared = await AppManager.Instance.AppExitAsync(false, clearSystemProxy: _systemProxyTouched);
+            CoreUp = false;
+            Say("exit · shutdown requested");
+            return proxyCleared ? OpResult.Good()
+                : OpResult.Bad("не удалось отключить системный прокси; проверьте настройки Windows вручную");
         }
         catch (Exception ex)
         {
             Say("exit error: " + ex.Message);
+            return OpResult.Bad("ошибка завершения работы; проверьте системный прокси: " + ex.Message);
         }
     }
 }

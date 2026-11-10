@@ -3,183 +3,118 @@ namespace ServiceLib.Manager;
 public class ProfileExManager
 {
     private static readonly Lazy<ProfileExManager> _instance = new(() => new());
-    private ConcurrentBag<ProfileExItem> _lstProfileEx = [];
-    private readonly Queue<string> _queIndexIds = new();
     public static ProfileExManager Instance => _instance.Value;
-    private static readonly string _tag = "ProfileExHandler";
 
-    public ProfileExManager()
+    private readonly object _sync = new();
+    private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private readonly Dictionary<string, ProfileExItem> _items = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, long> _dirty = new(StringComparer.Ordinal);
+    private long _version;
+    private readonly Func<ProfileExItem, Task> _saveItem;
+
+    public ProfileExManager() : this(SaveItemAsync) { }
+
+    // Injectable persistence keeps concurrency and failure tests away from the user database.
+    public ProfileExManager(Func<ProfileExItem, Task> saveItem)
     {
-        //Init();
+        _saveItem = saveItem ?? throw new ArgumentNullException(nameof(saveItem));
+    }
+
+    private static async Task SaveItemAsync(ProfileExItem item)
+    {
+        await SQLiteHelper.Instance.ExecuteAsync(
+            "INSERT INTO ProfileExItem (IndexId, Delay, Speed, Sort, Message, IpInfo) VALUES (?, ?, ?, ?, ?, ?) " +
+            "ON CONFLICT(IndexId) DO UPDATE SET Delay=excluded.Delay, Speed=excluded.Speed, Sort=excluded.Sort, Message=excluded.Message, IpInfo=excluded.IpInfo",
+            item.IndexId, item.Delay, item.Speed, item.Sort, item.Message, item.IpInfo);
     }
 
     public async Task Init()
     {
-        await InitData();
-    }
-
-    public async Task<ConcurrentBag<ProfileExItem>> GetProfileExs()
-    {
-        return await Task.FromResult(_lstProfileEx);
-    }
-
-    private async Task InitData()
-    {
-        await SQLiteHelper.Instance.ExecuteAsync($"delete from ProfileExItem where indexId not in ( select indexId from ProfileItem )");
-
-        _lstProfileEx = new(await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync());
-    }
-
-    private void IndexIdEnqueue(string indexId)
-    {
-        if (indexId.IsNotEmpty() && !_queIndexIds.Contains(indexId))
+        await _saveGate.WaitAsync();
+        try
         {
-            _queIndexIds.Enqueue(indexId);
-        }
-    }
-
-    private async Task SaveQueueIndexIds()
-    {
-        var cnt = _queIndexIds.Count;
-        if (cnt > 0)
-        {
-            var lstExists = await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync();
-            List<ProfileExItem> lstInserts = [];
-            List<ProfileExItem> lstUpdates = [];
-
-            for (var i = 0; i < cnt; i++)
+            await SQLiteHelper.Instance.ExecuteAsync("delete from ProfileExItem where indexId not in ( select indexId from ProfileItem )");
+            var loaded = await SQLiteHelper.Instance.TableAsync<ProfileExItem>().ToListAsync();
+            lock (_sync)
             {
-                var id = _queIndexIds.Dequeue();
-                var item = lstExists.FirstOrDefault(t => t.IndexId == id);
-                var itemNew = _lstProfileEx?.FirstOrDefault(t => t.IndexId == id);
-                if (itemNew is null)
-                {
-                    continue;
-                }
-
-                if (item is not null)
-                {
-                    lstUpdates.Add(itemNew);
-                }
-                else
-                {
-                    lstInserts.Add(itemNew);
-                }
-            }
-
-            try
-            {
-                if (lstInserts.Count > 0)
-                {
-                    await SQLiteHelper.Instance.InsertAllAsync(lstInserts);
-                }
-
-                if (lstUpdates.Count > 0)
-                {
-                    await SQLiteHelper.Instance.UpdateAllAsync(lstUpdates);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logging.SaveLog(_tag, ex);
+                // Preserve changes that arrived while the database was being read.
+                foreach (var item in loaded)
+                    if (!_dirty.ContainsKey(item.IndexId))
+                        _items[item.IndexId] = Copy(item);
             }
         }
+        finally { _saveGate.Release(); }
     }
 
-    private ProfileExItem AddProfileEx(string indexId)
+    private static ProfileExItem Copy(ProfileExItem item) => new()
     {
-        var profileEx = new ProfileExItem()
+        IndexId = item.IndexId, Delay = item.Delay, Speed = item.Speed,
+        Sort = item.Sort, Message = item.Message, IpInfo = item.IpInfo
+    };
+
+    public Task<ConcurrentBag<ProfileExItem>> GetProfileExs()
+    {
+        lock (_sync)
+            return Task.FromResult(new ConcurrentBag<ProfileExItem>(_items.Values.Select(Copy)));
+    }
+
+    private void Update(string indexId, Action<ProfileExItem> change)
+    {
+        if (string.IsNullOrEmpty(indexId)) return;
+        lock (_sync)
         {
-            IndexId = indexId,
-            Delay = 0,
-            Speed = 0,
-            Sort = 0,
-            Message = string.Empty
-        };
-        _lstProfileEx.Add(profileEx);
-        IndexIdEnqueue(indexId);
-        return profileEx;
-    }
-
-    private ProfileExItem GetProfileExItem(string? indexId)
-    {
-        return _lstProfileEx.FirstOrDefault(t => t.IndexId == indexId) ?? AddProfileEx(indexId);
-    }
-
-    public async Task ClearAll()
-    {
-        await SQLiteHelper.Instance.ExecuteAsync($"delete from ProfileExItem ");
-        _lstProfileEx = [];
+            if (!_items.TryGetValue(indexId, out var item))
+                _items[indexId] = item = new ProfileExItem { IndexId = indexId, Message = string.Empty };
+            change(item);
+            _dirty[indexId] = ++_version;
+        }
     }
 
     public async Task SaveTo()
     {
+        await _saveGate.WaitAsync();
         try
         {
-            await SaveQueueIndexIds();
+            List<(ProfileExItem Item, long Version)> snapshot;
+            lock (_sync)
+                snapshot = _dirty.Select(pair => (Copy(_items[pair.Key]), pair.Value)).ToList();
+
+            foreach (var (item, version) in snapshot)
+            {
+                // Only acknowledge the exact version committed: concurrent edits remain dirty.
+                await _saveItem(item);
+                lock (_sync)
+                    if (_dirty.TryGetValue(item.IndexId, out var current) && current == version)
+                        _dirty.Remove(item.IndexId);
+            }
         }
-        catch (Exception ex)
+        finally { _saveGate.Release(); }
+    }
+
+    public async Task ClearAll()
+    {
+        await _saveGate.WaitAsync();
+        try
         {
-            Logging.SaveLog(_tag, ex);
+            await SQLiteHelper.Instance.ExecuteAsync("delete from ProfileExItem");
+            lock (_sync) { _items.Clear(); _dirty.Clear(); }
         }
+        finally { _saveGate.Release(); }
     }
 
-    public void SetTestDelay(string indexId, int delay)
-    {
-        var profileEx = GetProfileExItem(indexId);
-
-        profileEx.Delay = delay;
-        IndexIdEnqueue(indexId);
-    }
-
-    public void SetTestSpeed(string indexId, decimal speed)
-    {
-        var profileEx = GetProfileExItem(indexId);
-
-        profileEx.Speed = speed;
-        IndexIdEnqueue(indexId);
-    }
-
-    public void SetTestMessage(string indexId, string message)
-    {
-        var profileEx = GetProfileExItem(indexId);
-
-        profileEx.Message = message;
-        IndexIdEnqueue(indexId);
-    }
-
-    public void SetTestIpInfo(string indexId, string ipInfo)
-    {
-        var profileEx = GetProfileExItem(indexId);
-
-        profileEx.IpInfo = ipInfo;
-        IndexIdEnqueue(indexId);
-    }
-
-    public void SetSort(string indexId, int sort)
-    {
-        var profileEx = GetProfileExItem(indexId);
-
-        profileEx.Sort = sort;
-        IndexIdEnqueue(indexId);
-    }
+    public void SetTestDelay(string indexId, int delay) => Update(indexId, item => item.Delay = delay);
+    public void SetTestSpeed(string indexId, decimal speed) => Update(indexId, item => item.Speed = speed);
+    public void SetTestMessage(string indexId, string message) => Update(indexId, item => item.Message = message);
+    public void SetTestIpInfo(string indexId, string ipInfo) => Update(indexId, item => item.IpInfo = ipInfo);
+    public void SetSort(string indexId, int sort) => Update(indexId, item => item.Sort = sort);
 
     public int GetSort(string indexId)
     {
-        var profileEx = _lstProfileEx.FirstOrDefault(t => t.IndexId == indexId);
-        if (profileEx == null)
-        {
-            return 0;
-        }
-        return profileEx.Sort;
+        lock (_sync) return _items.TryGetValue(indexId, out var item) ? item.Sort : 0;
     }
 
     public int GetMaxSort()
     {
-        if (_lstProfileEx.Count <= 0)
-        {
-            return 0;
-        }
-        return _lstProfileEx.Max(t => t?.Sort ?? 0);
+        lock (_sync) return _items.Count == 0 ? 0 : _items.Values.Max(item => item.Sort);
     }
 }

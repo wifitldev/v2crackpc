@@ -6,6 +6,7 @@ public class PacManager
     private CancellationTokenSource? _cts;
     private int _pacPort;
     private TcpListener? _tcpListener;
+    private Task? _listenerTask;
     private byte[] _writeContent = [];
 
     public async Task StartAsync(int httpPort, int pacPort)
@@ -13,20 +14,29 @@ public class PacManager
         var content = await InitText(httpPort);
         _writeContent = content;
 
-        if (_tcpListener is not null && _pacPort == pacPort)
+        if (_tcpListener is not null && _pacPort == pacPort && _listenerTask is { IsCompleted: false })
         {
             return;
         }
 
         Stop();
         var cts = new CancellationTokenSource();
-        var listener = TcpListener.Create(pacPort);
-        listener.Start();
+        var listener = new TcpListener(IPAddress.Loopback, pacPort);
+        try
+        {
+            listener.Start();
+        }
+        catch
+        {
+            listener.Stop();
+            cts.Dispose();
+            throw;
+        }
 
         _cts = cts;
         _pacPort = pacPort;
         _tcpListener = listener;
-        _ = ListenLoopAsync(listener, cts.Token);
+        _listenerTask = ListenLoopAsync(listener, cts.Token);
     }
 
     private async Task<byte[]> InitText(int httpPort)
@@ -66,13 +76,36 @@ public class PacManager
             while (!token.IsCancellationRequested)
             {
                 using var client = await listener.AcceptTcpClientAsync(token).ConfigureAwait(false);
-                await using var stream = client.GetStream();
-                _ = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
-                await stream.WriteAsync(_writeContent, token).ConfigureAwait(false);
-                await stream.FlushAsync(token).ConfigureAwait(false);
+                try
+                {
+                    using var clientTimeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    clientTimeout.CancelAfter(TimeSpan.FromSeconds(5));
+                    await using var stream = client.GetStream();
+                    _ = await stream.ReadAsync(buffer, clientTimeout.Token).ConfigureAwait(false);
+                    await stream.WriteAsync(_writeContent, clientTimeout.Token).ConfigureAwait(false);
+                    await stream.FlushAsync(clientTimeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                {
+                    // Do not let an idle client block subsequent PAC requests.
+                }
+                catch (IOException) when (!token.IsCancellationRequested)
+                {
+                    // A disconnected client must not stop the listener.
+                }
+                catch (SocketException) when (!token.IsCancellationRequested)
+                {
+                    // Continue accepting other local clients.
+                }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException) when (token.IsCancellationRequested)
+        {
+        }
+        catch (SocketException) when (token.IsCancellationRequested)
         {
         }
         catch (Exception ex)
@@ -93,5 +126,6 @@ public class PacManager
         _cts = null;
         _pacPort = 0;
         _tcpListener = null;
+        _listenerTask = null;
     }
 }

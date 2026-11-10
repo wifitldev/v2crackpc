@@ -13,7 +13,8 @@ using System.Text;
 // Uses _icon/icon.{png,jpg,svg...} as the artwork when present, otherwise a built-in bolt.
 //
 // Output:
-//   v2rayN/v2rayN/Resources/{v2rayN,NotifyIcon1..4}.ico        (WPF)
+//   legacy/v2rayN/Resources/{v2rayN,NotifyIcon1..4}.ico         (старый WPF UI)
+//   app/v2crackN.ico                                            (новый WPF UI, основная копия)
 //   v2rayN/v2rayN.Desktop/Assets/{v2rayN,NotifyIcon1..4}.ico    (Avalonia)
 //   v2rayN/v2rayN.Desktop/v2rayN.png, v2rayN.icns               (packaging)
 //   _icon/preview_*.png                                         (for review)
@@ -22,7 +23,7 @@ var repo = FindRepoRoot();
 var dropDir = Path.Combine(repo, "_icon");
 Directory.CreateDirectory(dropDir);
 
-var resDir = Path.Combine(repo, "v2rayN", "v2rayN", "Resources");
+var resDir = Path.Combine(repo, "legacy", "v2rayN", "Resources");
 var assetsDir = Path.Combine(repo, "v2rayN", "v2rayN.Desktop", "Assets");
 var desktopDir = Path.Combine(repo, "v2rayN", "v2rayN.Desktop");
 

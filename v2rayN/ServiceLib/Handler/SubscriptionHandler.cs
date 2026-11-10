@@ -48,8 +48,8 @@ public static class SubscriptionHandler
             catch (Exception ex)
             {
                 var hashCode = $"{item.Remarks}->";
-                Logging.SaveLog("UpdateSubscription", ex);
-                await updateFunc?.Invoke(false, $"{hashCode}{ResUI.MsgFailedImportSubscription}: {ex.Message}");
+                Logging.SaveLog("UpdateSubscription: subscription update failed (details omitted)");
+                await updateFunc?.Invoke(false, $"{hashCode}{ResUI.MsgFailedImportSubscription} ({ex.GetType().Name})");
                 await updateFunc?.Invoke(false, "-------------------------------------------------------");
             }
         }
@@ -100,7 +100,8 @@ public static class SubscriptionHandler
         var downloadHandle = new DownloadService
         {
             AcceptHeader = "*/*",
-            RequestHeaders = requestHeaders
+            RequestHeaders = requestHeaders,
+            SensitiveUrl = true
         };
         downloadHandle.Error += (sender2, args) =>
         {
@@ -237,20 +238,14 @@ public static class SubscriptionHandler
 
         await updateFunc?.Invoke(false, $"{hashCode}{ResUI.MsgGetSubscriptionSuccessfully}");
 
-        // If result is too short, display content directly
-        if (result.Length < 99)
-        {
-            await updateFunc?.Invoke(false, $"{hashCode}{result}");
-        }
-
         await updateFunc?.Invoke(false, $"{hashCode}{ResUI.MsgStartParsingSubscription}");
 
         // Add servers to configuration
         var ret = await ConfigHandler.AddBatchServers(config, result, id, true);
         if (ret <= 0)
         {
+            // Subscription bodies can contain credentials; never write them to logs.
             Logging.SaveLog("FailedImportSubscription");
-            Logging.SaveLog(result);
         }
 
         // Update completion message

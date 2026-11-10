@@ -24,6 +24,7 @@ public sealed class TrayIcon : IDisposable
     private const uint WM_USER = 0x0400;
     private const uint TRAY_MESSAGE = WM_USER + 1;
     private const uint ID_TRAY_ICON = 1001;
+    private static readonly uint TaskbarCreated = RegisterWindowMessage("TaskbarCreated");
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct NOTIFYICONDATA
@@ -51,22 +52,38 @@ public sealed class TrayIcon : IDisposable
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     private static extern bool Shell_NotifyIcon(uint dwMessage, ref NOTIFYICONDATA lpData);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string name);
+
     [DllImport("user32.dll")]
     private static extern IntPtr LoadIcon(IntPtr hInstance, IntPtr lpIconName);
 
-    [DllImport("user32.dll")]
-    private static extern bool DestroyIcon(IntPtr hIcon);
-
     private readonly Window _window;
     private readonly IntPtr _hwnd;
+    private readonly HwndSource? _source;
     private Icon? _icon;
     private bool _disposed;
+    public bool IsAvailable { get; private set; }
 
     public TrayIcon(Window window)
     {
         _window = window;
         _hwnd = new WindowInteropHelper(window).Handle;
+        AddIcon();
 
+        _source = HwndSource.FromHwnd(_hwnd);
+        _source?.AddHook(WndProc);
+        _window.StateChanged += OnWindowStateChanged;
+    }
+
+    private void OnWindowStateChanged(object? sender, EventArgs e)
+    {
+        if (IsAvailable && _window.WindowState == WindowState.Minimized)
+            _window.Hide();
+    }
+
+    private void AddIcon()
+    {
         var nid = new NOTIFYICONDATA
         {
             cbSize = (uint)Marshal.SizeOf<NOTIFYICONDATA>(),
@@ -78,16 +95,7 @@ public sealed class TrayIcon : IDisposable
             szTip = AppTip()
         };
 
-        Shell_NotifyIcon(NIM_ADD, ref nid);
-
-        var source = HwndSource.FromHwnd(_hwnd);
-        source?.AddHook(WndProc);
-
-        _window.StateChanged += (s, e) =>
-        {
-            if (window.WindowState == WindowState.Minimized)
-                window.Hide();
-        };
+        IsAvailable = Shell_NotifyIcon(NIM_ADD, ref nid);
     }
 
     /// <summary>Иконка приложения из текущего exe; иначе системная IDI_APPLICATION.</summary>
@@ -95,6 +103,7 @@ public sealed class TrayIcon : IDisposable
     {
         try
         {
+            if (_icon is not null) return _icon.Handle;
             var exe = Environment.ProcessPath;
             if (!string.IsNullOrEmpty(exe) && File.Exists(exe))
             {
@@ -115,6 +124,11 @@ public sealed class TrayIcon : IDisposable
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        if (TaskbarCreated != 0 && msg == TaskbarCreated && !_disposed)
+        {
+            AddIcon();
+            if (!IsAvailable) ShowWindow();
+        }
         if (msg == TRAY_MESSAGE)
         {
             switch (lParam.ToInt64())
@@ -146,10 +160,16 @@ public sealed class TrayIcon : IDisposable
         var info = new System.Windows.Controls.MenuItem { Header = AppTip(), IsEnabled = false };
 
         var connect = new System.Windows.Controls.MenuItem { Header = "Подключить" };
-        connect.Click += (s, e) => _ = ProtoApp.Instance.ConnectAsync();
+        connect.Click += async (s, e) =>
+        {
+            if (_window is MainWindow mainWindow) await mainWindow.ConnectUiAsync();
+        };
 
         var disconnect = new System.Windows.Controls.MenuItem { Header = "Отключить" };
-        disconnect.Click += (s, e) => _ = ProtoApp.Instance.DisconnectAsync();
+        disconnect.Click += async (s, e) =>
+        {
+            if (_window is MainWindow mainWindow) await mainWindow.DisconnectUiAsync();
+        };
 
         var show = new System.Windows.Controls.MenuItem { Header = "Показать окно" };
         show.Click += (s, e) => ShowWindow();
@@ -179,6 +199,9 @@ public sealed class TrayIcon : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        IsAvailable = false;
+        _window.StateChanged -= OnWindowStateChanged;
+        _source?.RemoveHook(WndProc);
 
         var nid = new NOTIFYICONDATA
         {

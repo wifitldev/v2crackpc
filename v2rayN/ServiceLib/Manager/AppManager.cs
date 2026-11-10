@@ -123,33 +123,36 @@ public sealed class AppManager
         return true;
     }
 
-    public async Task AppExitAsync(bool needShutdown)
+    public async Task<bool> AppExitAsync(bool needShutdown, bool clearSystemProxy = true)
     {
-        try
-        {
-            Logging.SaveLog("AppExitAsync Begin");
-
-            await SysProxyHandler.UpdateSysProxy(_config, true);
-            AppEvents.AppExitRequested.Publish();
-            await Task.Delay(50); //Wait for AppExitRequested to be processed
-
-            await ConfigHandler.SaveConfig(_config);
-            await ProfileExManager.Instance.SaveTo();
-            await StatisticsManager.Instance.SaveTo();
-            await CoreManager.Instance.CoreStop();
-            DpiBypassService.Instance.Stop();
-            StatisticsManager.Instance.Close();
-
-            Logging.SaveLog("AppExitAsync End");
-        }
-        catch { }
-        finally
-        {
-            if (needShutdown)
+        var proxyCleared = !clearSystemProxy;
+        try { Logging.SaveLog("AppExitAsync Begin"); } catch { }
+        await ShutdownCleanup.RunAsync(
+        [
+            async () =>
             {
-                Shutdown(false);
-            }
-        }
+                if (clearSystemProxy)
+                {
+                    proxyCleared = await SysProxyHandler.UpdateSysProxy(_config, true);
+                    if (!proxyCleared) Logging.SaveLog("AppExitAsync: failed to clear system proxy");
+                }
+            },
+            async () =>
+            {
+                AppEvents.AppExitRequested.Publish();
+                await Task.Delay(50); // Wait for AppExitRequested to be processed.
+            },
+            async () => { await ConfigHandler.SaveConfig(_config); },
+            () => ProfileExManager.Instance.SaveTo(),
+            () => StatisticsManager.Instance.SaveTo(),
+            () => CoreManager.Instance.CoreStop(),
+            () => { DpiBypassService.Instance.Stop(); return Task.CompletedTask; },
+            () => { StatisticsManager.Instance.Close(); return Task.CompletedTask; },
+        ], ex => Logging.SaveLog("AppExitAsync cleanup", ex));
+        try { Logging.SaveLog("AppExitAsync End"); } catch { }
+        if (needShutdown)
+            Shutdown(false);
+        return proxyCleared;
     }
 
     public void Shutdown(bool byUser)

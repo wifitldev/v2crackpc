@@ -4,36 +4,35 @@
 
 .DESCRIPTION
     1. asks for the version (or takes -Version) and builds the archive name from it;
-    2. wipes local logs / temp / test configs of the dev payload (guiLogs, guiTemps,
-       binConfigs, guiBackups) so nothing personal gets packed;
+    2. creates a fresh staging directory without modifying the developer's data;
     3. dotnet publish -> single self-contained win-x64 exe (no .NET on the target PC);
     4. copies xray/geo/wintun/dpi into bin\;
-    5. zips it all into dist\v2crackN-<version>-windows-11.zip + .sha256;
+    5. zips it all into dist\v2crackN-<version>-windows-10-11.zip + .sha256;
     6. verifies that no personal file (configs, DB, subscriptions, logs) got in.
 
     guiConfigs\ (your guiNConfig.json + guiNDB.db with subscriptions) is NEVER deleted
-    from this machine and is NEVER packed - the archive ships empty folders only.
+    from this machine and is NEVER packed. Runtime folders are created by the app.
 
 .EXAMPLE
-    .\tools\pack-ui-proto.ps1              # asks for the version
-    .\tools\pack-ui-proto.ps1 -Version 1.2.3
+    .\tools\pack-ui-proto.ps1 -Version 1.2.3 -CoreSource C:\verified\xray -SingBoxExe C:\verified\sing-box\sing-box.exe -Installer
 #>
 [CmdletBinding()]
 param(
     # version for the archive name; when omitted the script asks for it
     [string]$Version,
-    [string]$CoreSource = "$env:APPDATA\v2crackNG-Win\core",
-    [string]$SingBoxExe = "C:\Program Files\FlyFrogLLC\Happ\tun\sing-box.exe",
+    [string]$CoreSource,
+    [string]$SingBoxExe,
     [switch]$Installer
 )
 
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent $PSScriptRoot
-$project = Join-Path $root 'tools\ui-proto\UiProto.csproj'
-$uiDir = Join-Path $root 'tools\ui-proto'
+$project = Join-Path $root 'app\UiProto.csproj'
+$uiDir = Join-Path $root 'app'
 $publishDir = Join-Path $uiDir 'publish'
-$stage = Join-Path $env:TEMP 'v2crackN-pack\app'
+$workDir = Join-Path $env:TEMP ('v2crackN-pack-' + [guid]::NewGuid().ToString('N'))
+$stage = Join-Path $workDir 'app'
 $dist = Join-Path $root 'dist'
 $dotnet = Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'
 if (-not (Test-Path $dotnet)) { $dotnet = 'dotnet' }
@@ -50,52 +49,37 @@ $zip = Join-Path $dist $OutputName
 $installerName = "v2crackN-$Version-windows-10-11-installer.exe"
 $installerPath = Join-Path $dist $installerName
 
+# Never overwrite an existing release artifact, even when a previous build failed.
+$outputs = @($zip, "$zip.sha256")
+if ($Installer) { $outputs += @($installerPath, "$installerPath.sha256") }
+foreach ($output in $outputs) {
+    if (Test-Path -LiteralPath $output) { throw "Output already exists: $output. Choose another version." }
+}
+
 function Require-File([string]$Path, [string]$Label) {
     if (-not (Test-Path $Path -PathType Leaf)) {
         throw "Missing ${Label}: $Path"
     }
 }
 
-function Remove-StaleJunction([string]$Path) {
-    if (-not (Test-Path $Path)) { return }
-    $item = Get-Item $Path -Force
-    if ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) {
-        Write-Host "Removing stale junction: $Path"
-        cmd /c "rmdir `"$Path`"" | Out-Null
-    }
-}
-
 Require-File $project 'UI project'
+if ([string]::IsNullOrWhiteSpace($CoreSource)) { throw 'Specify -CoreSource with files from a verified official Xray release.' }
 Require-File (Join-Path $CoreSource 'xray.exe') 'Xray core'
 Require-File (Join-Path $CoreSource 'geoip.dat') 'geoip.dat'
 Require-File (Join-Path $CoreSource 'geosite.dat') 'geosite.dat'
 Require-File (Join-Path $CoreSource 'wintun.dll') 'wintun.dll'
 Require-File (Join-Path $root 'tools\dpi\ciadpi.exe') 'DPI module'
+if ([string]::IsNullOrWhiteSpace($SingBoxExe)) { throw 'Specify -SingBoxExe with a verified official sing-box release.' }
+Require-File $SingBoxExe 'sing-box core'
 
-# A previous local payload may contain a junction to a deleted main-app build.
-Remove-StaleJunction (Join-Path $publishDir 'bin')
+# The release is built in a fresh staging directory. Never clean the developer's
+# publish directory: it can contain settings, logs, backups, or junctions.
 
-# ------------------------------------------------- clean logs & temp state
-# только логи/временное: guiConfigs (твой DB и подписки) не трогаем
-Write-Host '== clean local logs/temp ==' -ForegroundColor Cyan
-foreach ($dir in 'guiLogs', 'guiTemps', 'binConfigs', 'guiBackups') {
-    $p = Join-Path $publishDir $dir
-    if (Test-Path $p) {
-        Get-ChildItem $p -Force -ErrorAction SilentlyContinue |
-            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-foreach ($file in 'payload.json', 'payload-state.json', 'proto-settings.json') {
-    $p = Join-Path $publishDir $file
-    if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue }
-}
-
+# Keep the exact staging path for manual cleanup; never delete an unverified path.
+Write-Host "Temporary build files: $workDir"
 # ---------------------------------------------------------------- publish
 $env:HTTP_PROXY = $null
 $env:HTTPS_PROXY = $null
-if (Test-Path (Split-Path $stage -Parent)) {
-    Remove-Item (Split-Path $stage -Parent) -Recurse -Force
-}
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 
 Write-Host "== publish self-contained win-x64 (v$Version) ==" -ForegroundColor Cyan
@@ -116,19 +100,11 @@ Copy-Item (Join-Path $CoreSource 'geosite.dat') (Join-Path $bin 'geosite.dat') -
 Copy-Item (Join-Path $CoreSource 'wintun.dll') (Join-Path $bin 'wintun.dll') -Force
 Copy-Item (Join-Path $root 'tools\dpi\ciadpi.exe') (Join-Path $bin 'dpi\ciadpi.exe') -Force
 
-if (Test-Path $SingBoxExe -PathType Leaf) {
-    New-Item -ItemType Directory -Path (Join-Path $bin 'sing_box') -Force | Out-Null
-    Copy-Item $SingBoxExe (Join-Path $bin 'sing_box\sing-box.exe') -Force
-    Write-Host 'sing-box: included'
-}
-else {
-    throw "sing-box is required for the release package: $SingBoxExe"
-}
+New-Item -ItemType Directory -Path (Join-Path $bin 'sing_box') -Force | Out-Null
+Copy-Item -LiteralPath $SingBoxExe -Destination (Join-Path $bin 'sing_box\sing-box.exe') -Force
+Write-Host 'sing-box: included'
 
-# Runtime folders are created by the app; ship them empty - no private state.
-foreach ($name in 'guiConfigs', 'guiLogs', 'binConfigs', 'guiBackups', 'guiTemps') {
-    New-Item -ItemType Directory -Path (Join-Path $stage $name) -Force | Out-Null
-}
+# Runtime data directories are created by the application, not shipped.
 
 @'
 v2crackN for Windows 10/11
@@ -138,22 +114,22 @@ The package is self-contained and does not require a separate .NET installation.
 Keep the bin folder next to the executable.
 '@ | Set-Content (Join-Path $stage 'README.txt') -Encoding ASCII
 
-# ------------------------------------------------- no personal data allowed
-$private = Get-ChildItem $stage -Recurse -File -Force |
-    Where-Object {
-        $_.Name -match '^(guiNConfig|guiNDB|payload|proto-settings)' -or
-        $_.Extension -in '.log', '.db' -or
-        $_.FullName -match '[\\/](guiLogs|guiBackups|guiTemps)[\\/]'
-    }
-if ($private) {
-    $private | ForEach-Object { Write-Host "PERSONAL: $($_.FullName)" -ForegroundColor Red }
-    throw 'в архив попали личные файлы — упаковка отменена'
+# Allow only explicitly enumerated release files; never package unexpected data.
+$allowed = @('v2crackN.exe', 'README.txt', 'bin\xray\xray.exe', 'bin\sing_box\sing-box.exe',
+    'bin\geoip.dat', 'bin\geosite.dat', 'bin\wintun.dll', 'bin\dpi\ciadpi.exe')
+$actual = @(Get-ChildItem -LiteralPath $stage -Recurse -File -Force | ForEach-Object {
+    $_.FullName.Substring($stage.Length).TrimStart([char[]]@('\', '/'))
+})
+foreach ($file in $actual) {
+    if ($allowed -notcontains $file) { throw "Unexpected file in package: $file" }
+}
+foreach ($file in $allowed) {
+    if ($actual -notcontains $file) { throw "Missing file in package: $file" }
 }
 
 # ---------------------------------------------------------------- archive
 Write-Host '== archive ==' -ForegroundColor Cyan
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
-if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zip -CompressionLevel Optimal
 $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 [IO.File]::WriteAllText("$zip.sha256", "$hash *$OutputName`n")
@@ -162,8 +138,7 @@ $size = [Math]::Round((Get-Item $zip).Length / 1MB, 2)
 if ($Installer) {
     Write-Host '== installer ==' -ForegroundColor Cyan
     $installerProject = Join-Path $root 'tools\installer\Installer.csproj'
-    $installerStage = Join-Path $env:TEMP 'v2crackN-pack\installer'
-    if (Test-Path $installerStage) { Remove-Item $installerStage -Recurse -Force }
+    $installerStage = Join-Path $workDir 'installer'
     New-Item -ItemType Directory -Path $installerStage -Force | Out-Null
     $installerPath = Join-Path $dist $installerName
     & $dotnet publish $installerProject -c Release -r win-x64 --self-contained true `
@@ -171,7 +146,7 @@ if ($Installer) {
         "-p:ZipPath=$zip" "-p:Version=$Version" -o $installerStage -v q -nologo
     if ($LASTEXITCODE -ne 0) { throw "installer publish failed: $LASTEXITCODE" }
     $builtInstaller = Join-Path $installerStage 'v2crackN-Installer.exe'
-    Move-Item $builtInstaller $installerPath -Force
+    Move-Item $builtInstaller $installerPath
     $installerHash = (Get-FileHash $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
     [IO.File]::WriteAllText("$installerPath.sha256", "$installerHash *$installerName`n")
     $installerSize = [Math]::Round((Get-Item $installerPath).Length / 1MB, 2)

@@ -15,6 +15,23 @@ public class DownloadService
 
     public IReadOnlyDictionary<string, string>? RequestHeaders { get; init; }
 
+    /// <summary>Suppress exception details that may contain confidential download URLs.</summary>
+    public bool SensitiveUrl { get; init; }
+
+    private void ReportStringDownloadError(Exception ex)
+    {
+        if (SensitiveUrl)
+        {
+            Logging.SaveLog("DownloadService: sensitive download failed (details omitted)");
+            Error?.Invoke(this, new ErrorEventArgs(new InvalidOperationException("Subscription download failed; check network and subscription URL.")));
+            return;
+        }
+        Logging.SaveLog(_tag, ex);
+        Error?.Invoke(this, new ErrorEventArgs(ex));
+        if (ex.InnerException != null)
+            Error?.Invoke(this, new ErrorEventArgs(ex.InnerException));
+    }
+
     private static readonly string _tag = "DownloadService";
 
     /// <summary>
@@ -217,12 +234,7 @@ public class DownloadService
         }
         catch (Exception ex)
         {
-            Logging.SaveLog(_tag, ex);
-            Error?.Invoke(this, new ErrorEventArgs(ex));
-            if (ex.InnerException != null)
-            {
-                Error?.Invoke(this, new ErrorEventArgs(ex.InnerException));
-            }
+            ReportStringDownloadError(ex);
         }
 
         try
@@ -239,12 +251,7 @@ public class DownloadService
         }
         catch (Exception ex)
         {
-            Logging.SaveLog(_tag, ex);
-            Error?.Invoke(this, new ErrorEventArgs(ex));
-            if (ex.InnerException != null)
-            {
-                Error?.Invoke(this, new ErrorEventArgs(ex.InnerException));
-            }
+            ReportStringDownloadError(ex);
         }
 
         return null;
@@ -303,12 +310,7 @@ public class DownloadService
         }
         catch (Exception ex)
         {
-            Logging.SaveLog(_tag, ex);
-            Error?.Invoke(this, new ErrorEventArgs(ex));
-            if (ex.InnerException != null)
-            {
-                Error?.Invoke(this, new ErrorEventArgs(ex.InnerException));
-            }
+            ReportStringDownloadError(ex);
         }
 
         return null;
@@ -334,12 +336,7 @@ public class DownloadService
         }
         catch (Exception ex)
         {
-            Logging.SaveLog(_tag, ex);
-            Error?.Invoke(this, new ErrorEventArgs(ex));
-            if (ex.InnerException != null)
-            {
-                Error?.Invoke(this, new ErrorEventArgs(ex.InnerException));
-            }
+            ReportStringDownloadError(ex);
         }
         return null;
     }

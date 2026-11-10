@@ -19,7 +19,8 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       target: windows
-      project: ./v2rayN/v2rayN.csproj
+      # путь относителен working-directory: ./v2rayN внутри build.yml
+      project: ../app/UiProto.csproj
 
   release-zip:
     if: inputs.release_tag != ''
